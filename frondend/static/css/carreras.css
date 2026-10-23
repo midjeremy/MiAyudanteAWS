@@ -1,0 +1,614 @@
+:root {
+    --bg-main: #f4f5f9;
+    --white: #ffffff;
+    --text-dark: #111111;
+    --text-gray: #666666;
+    --border-color: #eaeaea;
+
+    /* Color Principal de Marca (Morado) */
+    --brand-purple: #6a0dad;
+    --brand-purple-hover: #580b94;
+    --brand-purple-light: #f3e8ff;
+
+    /* Etiquetas / Badges */
+    --badge-blue-bg: #e0f2fe;
+    --badge-blue-text: #0284c7;
+    --badge-pink-bg: #fce7f3;
+    --badge-pink-text: #db2777;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Segoe UI', Roboto, -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+body.portal-body {
+    background-color: var(--bg-main);
+    color: var(--text-dark);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+a {
+    text-decoration: none;
+    transition: all 0.2s ease;
+}
+
+.navbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background-color: var(--white);
+    padding: 14px 48px;
+    border-bottom: 1px solid var(--border-color);
+    width: 100%;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+}
+
+.nav-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.nav-logo-icon {
+    font-size: 28px;
+}
+
+.nav-logo-text {
+    display: flex;
+    flex-direction: column;
+}
+
+.nav-logo-text strong {
+    display: block;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-dark);
+    line-height: 1.2;
+}
+
+.nav-logo-text span {
+    font-size: 11px;
+    color: var(--text-gray);
+}
+
+.nav-links {
+    display: flex;
+    list-style: none;
+    gap: 32px;
+    margin: 0;
+    padding: 0;
+    align-items: center;
+}
+
+.nav-links a {
+    color: #475569;
+    font-size: 14px;
+    font-weight: 500;
+    position: relative;
+    padding: 14px 0;
+    display: inline-block;
+}
+
+.nav-links a:hover {
+    color: var(--brand-purple);
+}
+
+.nav-links a.active {
+    color: var(--brand-purple);
+    font-weight: 600;
+}
+
+.nav-links a.active::after {
+    content: '';
+    position: absolute;
+    bottom: -15px;
+    left: 0;
+    width: 100%;
+    height: 3px;
+    background-color: var(--brand-purple);
+    border-radius: 2px 2px 0 0;
+}
+
+.nav-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+/* Botón Guardados con borde y texto */
+.btn-action-saved {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background-color: var(--white);
+    border: 1px solid var(--border-color);
+    padding: 8px 14px;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-dark);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-action-saved:hover {
+    border-color: var(--brand-purple);
+    background-color: var(--brand-purple-light);
+    color: var(--brand-purple);
+}
+
+/* Botones de iconos (notificaciones) */
+.btn-icon {
+    background: var(--white);
+    border: 1px solid var(--border-color);
+    font-size: 18px;
+    color: var(--text-gray);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    transition: all 0.2s ease;
+}
+
+.btn-icon:hover {
+    border-color: var(--brand-purple);
+    background-color: var(--brand-purple-light);
+    transform: translateY(-1px);
+}
+
+/* ==========================================
+   MENÚ DESPLEGABLE DE USUARIO (NATIVO <details>)
+========================================== */
+.user-menu-container {
+    position: relative;
+    display: inline-block;
+}
+
+.user-menu-container summary::-webkit-details-marker {
+    display: none;
+}
+
+.user-menu-btn {
+    list-style: none;
+    background: none;
+    border: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    padding: 2px;
+}
+
+.dropdown-arrow {
+    font-size: 10px;
+    color: var(--text-gray);
+    transition: transform 0.2s ease;
+}
+
+.user-menu-container[open] .dropdown-arrow {
+    transform: rotate(180deg);
+}
+
+.user-dropdown {
+    position: absolute;
+    right: 0;
+    top: 48px;
+    background-color: var(--white);
+    min-width: 180px;
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+    z-index: 1000;
+    padding: 6px 0;
+    border: 1px solid var(--border-color);
+}
+
+.dropdown-item {
+    display: block;
+    padding: 10px 16px;
+    color: var(--text-dark);
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 500;
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.dropdown-item:hover {
+    background-color: var(--brand-purple-light);
+    color: var(--brand-purple);
+}
+
+.dropdown-divider {
+    height: 1px;
+    background-color: var(--border-color);
+    margin: 4px 0;
+}
+
+.logout-item {
+    color: #dc2626;
+    font-weight: 600;
+}
+
+.logout-item:hover {
+    background-color: #ffeeef;
+    color: #b91c1c;
+}
+
+/* Avatar de usuario unificado (Texto) */
+.user-avatar {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    border: none;
+    background-color: var(--brand-purple);
+    color: var(--white);
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s ease;
+}
+
+/* Avatar de usuario unificado (Imagen del Gato) */
+.user-avatar-img {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid var(--brand-purple);
+    display: block;
+    transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.user-menu-btn:hover .user-avatar {
+    background-color: var(--brand-purple-hover);
+}
+
+.user-menu-btn:hover .user-avatar-img {
+    transform: scale(1.05);
+    border-color: var(--brand-purple-hover);
+}
+
+.main-container {
+    max-width: 1050px;
+    margin: 0 auto;
+    padding: 35px 20px 60px;
+    flex: 1;
+    width: 100%;
+}
+
+.page-header h1 {
+    font-size: 28px;
+    font-weight: 700;
+    margin-bottom: 6px;
+    color: var(--text-dark);
+}
+
+.page-header p {
+    color: var(--text-gray);
+    font-size: 14px;
+    margin-bottom: 25px;
+}
+
+.search-filter-section {
+    background: var(--white);
+    padding: 20px;
+    border-radius: 16px;
+    border: 1px solid var(--border-color);
+    margin-bottom: 24px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+}
+
+.main-search-bar {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 18px;
+}
+
+.main-search-bar input {
+    flex: 1;
+    padding: 12px 18px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    font-size: 14px;
+    outline: none;
+    background-color: #fafafa;
+    transition: border-color 0.2s ease;
+}
+
+.main-search-bar input:focus {
+    background-color: var(--white);
+    border-color: var(--brand-purple);
+}
+
+.btn-search {
+    background-color: var(--brand-purple);
+    color: white;
+    border: none;
+    padding: 0 20px;
+    border-radius: 10px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.btn-search:hover {
+    background-color: var(--brand-purple-hover);
+}
+
+.filters-row {
+    display: flex;
+    gap: 12px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+}
+
+.filter-group {
+    flex: 1;
+    min-width: 140px;
+    display: flex;
+    flex-direction: column;
+}
+
+.filter-group label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-gray);
+    margin-bottom: 6px;
+}
+
+.filter-group select {
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 13px;
+    color: var(--text-dark);
+    outline: none;
+    background-color: var(--white);
+    cursor: pointer;
+    transition: border-color 0.2s ease;
+}
+
+.filter-group select:focus {
+    border-color: var(--brand-purple);
+}
+
+.btn-reset-filters {
+    color: var(--brand-purple);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 10px 5px;
+    margin-left: auto;
+    display: inline-block;
+}
+
+.btn-reset-filters:hover {
+    text-decoration: underline;
+}
+
+.results-count {
+    font-size: 14px;
+    color: var(--text-gray);
+    margin-bottom: 20px;
+}
+
+.results-count strong {
+    color: var(--text-dark);
+}
+
+.careers-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.career-card {
+    background: var(--white);
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    padding: 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: relative;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.career-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.04);
+}
+
+/* Botón Corazón (Favorito) */
+.btn-heart {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    background: none;
+    border: none;
+    font-size: 20px;
+    color: #94a3b8;
+    cursor: pointer;
+    transition: color 0.2s ease, transform 0.2s ease;
+}
+
+.btn-heart:hover {
+    color: #ef4444;
+    transform: scale(1.15);
+}
+
+/* Contenido Izquierdo de la Tarjeta */
+.card-left-content {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+}
+
+/* Logos de Institución */
+.institution-logo {
+    width: 48px;
+    height: 48px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    flex-shrink: 0;
+    overflow: hidden;
+}
+
+/* Ajuste específico para el logo de INACAP */
+.square-logo {
+    background-color: #e11d48;
+    color: #ffffff;
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: -0.4px;
+    padding: 2px;
+    text-align: center;
+    line-height: 1;
+}
+
+/* Ajuste para Duoc UC */
+.duoc-logo {
+    background-color: #0f172a;
+    color: #f59e0b;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    line-height: 1;
+}
+
+/* Detalles de Carrera */
+.career-details h2 {
+    font-size: 17px;
+    font-weight: 700;
+    margin-bottom: 2px;
+}
+
+.career-details h2 a {
+    color: #2563eb;
+}
+
+.career-details h2 a:hover {
+    text-decoration: underline;
+}
+
+.institution-name {
+    font-size: 13px;
+    color: var(--text-gray);
+    margin-bottom: 10px;
+}
+
+/* Badges de Categoría */
+.category-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 14px;
+}
+
+.badge-blue {
+    background-color: var(--badge-blue-bg);
+    color: var(--badge-blue-text);
+}
+
+.badge-pink {
+    background-color: var(--badge-pink-bg);
+    color: var(--badge-pink-text);
+}
+
+/* Metadatos (Ubicación, Modalidad, Duración) */
+.career-meta {
+    display: flex;
+    gap: 20px;
+    font-size: 13px;
+    color: var(--text-gray);
+    flex-wrap: wrap;
+}
+
+/* Contenido Derecho (Arancel y Detalles) */
+.card-right-content {
+    display: flex;
+    align-items: center;
+    gap: 25px;
+}
+
+.price-box {
+    text-align: right;
+    display: flex;
+    flex-direction: column;
+}
+
+.price-box strong {
+    font-size: 16px;
+    color: var(--text-dark);
+    font-weight: 700;
+}
+
+.price-box span {
+    font-size: 11px;
+    color: var(--text-gray);
+}
+
+.btn-details {
+    border: 1px solid var(--brand-purple);
+    color: var(--brand-purple);
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    transition: background-color 0.2s ease;
+}
+
+.btn-details:hover {
+    background-color: var(--brand-purple-light);
+}
+
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    margin-top: 40px;
+}
+
+.page-num, .page-nav {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    color: var(--text-gray);
+    font-size: 14px;
+    font-weight: 500;
+    background-color: var(--white);
+    border: 1px solid var(--border-color);
+}
+
+.page-num.active {
+    background-color: var(--brand-purple);
+    color: white;
+    border-color: var(--brand-purple);
+}
+
+.page-num:hover:not(.active), .page-nav:hover {
+    border-color: var(--brand-purple);
+    color: var(--brand-purple);
+}
