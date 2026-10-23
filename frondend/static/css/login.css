@@ -1,0 +1,231 @@
+
+.login-body {
+    background-color: #f4f5f9;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+}
+
+.login-wrapper {
+    display: flex;
+    background: white;
+    width: 100%;
+    max-width: 1100px;
+    border-radius: 20px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+    overflow: hidden;
+}
+
+/* Lado Izquierdo */
+.login-left {
+    flex: 1;
+    background-color: #f8f9fc;
+    padding: 40px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    border-right: 1px solid #eaeaea;
+}
+
+.login-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.login-hero-text h1 {
+    font-size: 2.5rem;
+    color: #111;
+    margin-top: 20px;
+    margin-bottom: 10px;
+    line-height: 1.2;
+}
+
+.login-hero-text h1 span {
+    color: #6a0dad;
+    display: block;
+}
+
+.login-hero-text p {
+    color: #666;
+    font-size: 0.95rem;
+    line-height: 1.5;
+}
+
+.login-image-container {
+    text-align: center;
+    margin-top: 20px;
+}
+
+.login-image-container img {
+    max-width: 100%;
+    height: auto;
+    max-height: 280px;
+    object-fit: contain;
+}
+
+/* Lado Derecho (Formulario) */
+.login-right {
+    flex: 1;
+    padding: 50px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.login-form-container {
+    width: 100%;
+    max-width: 400px;
+}
+
+.login-form-container h2 {
+    font-size: 1.8rem;
+    color: #111;
+    margin-bottom: 5px;
+}
+
+.login-subtitle {
+    color: #777;
+    font-size: 0.9rem;
+    margin-bottom: 30px;
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 8px;
+}
+
+.input-with-icon {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.input-icon {
+    position: absolute;
+    left: 15px;
+    font-size: 16px;
+}
+
+.input-with-icon input {
+    width: 100%;
+    padding: 12px 15px 12px 45px;
+    border: 1px solid #ddd;
+    border-radius: 10px;
+    font-size: 0.95rem;
+    outline: none;
+    transition: border-color 0.3s;
+    background-color: #fafafa;
+}
+
+.input-with-icon input:focus {
+    border-color: #6a0dad;
+    background-color: #fff;
+}
+
+.toggle-password {
+    position: absolute;
+    right: 15px;
+    cursor: pointer;
+    font-size: 16px;
+}
+
+.form-options {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.85rem;
+    margin-bottom: 25px;
+}
+
+.checkbox-container {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    color: #555;
+    cursor: pointer;
+}
+
+.forgot-link {
+    color: #6a0dad;
+    font-weight: 500;
+}
+
+.btn-submit {
+    width: 100%;
+    background-color: #6a0dad;
+    color: white;
+    border: none;
+    padding: 14px;
+    border-radius: 10px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.btn-submit:hover {
+    background-color: #580b94;
+}
+
+.divider {
+    text-align: center;
+    border-bottom: 1px solid #eaeaea;
+    line-height: 0.1em;
+    margin: 25px 0;
+}
+
+.divider span {
+    background: #fff;
+    padding: 0 15px;
+    color: #888;
+    font-size: 0.8rem;
+}
+
+.social-login {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.btn-social {
+    width: 100%;
+    background-color: #fff;
+    border: 1px solid #ddd;
+    padding: 12px;
+    border-radius: 10px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: #333;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    transition: background-color 0.3s;
+}
+
+.btn-social:hover {
+    background-color: #f8f9fc;
+}
+
+.register-redirect {
+    text-align: center;
+    font-size: 0.85rem;
+    color: #666;
+    margin-top: 25px;
+}
+
+.register-redirect a {
+    color: #6a0dad;
+    font-weight: 600;
+}
