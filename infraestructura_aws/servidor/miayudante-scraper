@@ -1,0 +1,2 @@
+# Scraper de INACAP: domingos a las 03:00 UTC
+0 3 * * 0 ubuntu cd /home/ubuntu/MiAyudanteAWS/backend_api && flock -n /tmp/scraper_inacap.lock /home/ubuntu/MiAyudanteAWS/venv/bin/python manage.py run_inacap_scraper >> /home/ubuntu/scraper_inacap.log 2>&1

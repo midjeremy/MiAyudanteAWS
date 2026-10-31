@@ -4,6 +4,7 @@ import re
 import boto3
 import requests
 import io
+from urllib.parse import urlsplit
 from django.core.management.base import BaseCommand
 from django.conf import settings
 from selenium import webdriver
@@ -17,8 +18,40 @@ from selenium.common.exceptions import TimeoutException, StaleElementReferenceEx
 # Importar modelos de la aplicación 'scraper'
 from scraper.models import Institucion, Carrera, Sede, Jornada, OfertaAcademica
 
+URL_ARANCELES_SIGA3 = "https://siga3.inacap.cl/fup1.5/ofertas/contenidoCarrerasPorArea.asp"
+
 class Command(BaseCommand):
     help = 'Extrae el catálogo de INACAP, sube mallas a S3, procesa aranceles y actualiza direcciones de sedes'
+
+    def add_arguments(self, parser):
+        parser.add_argument('--limite', type=int, help='Procesa solo esta cantidad de carreras')
+        parser.add_argument('--con-ventana', action='store_true', help='Muestra Chrome en lugar de usar modo headless')
+
+    def abrir_acordeon_aranceles(self, driver):
+        try:
+            botones_acordeon = driver.find_elements(By.CSS_SELECTOR, "button.buttom-acordion-carrera-26")
+            for boton in botones_acordeon:
+                if "aranceles" in boton.text.lower():
+                    driver.execute_script("arguments[0].scrollIntoView(true);", boton)
+                    time.sleep(0.5)
+                    driver.execute_script("arguments[0].click();", boton)
+                    time.sleep(2)
+                    break
+        except Exception as e_acordeon:
+            self.stdout.write(self.style.WARNING(f"    [*] No se pudo abrir el acordeón de aranceles: {e_acordeon}"))
+
+    def aranceles_cargados(self, driver):
+        iframes = driver.find_elements(By.CSS_SELECTOR, "iframe.iframe-aranceles")
+        if not iframes:
+            return True
+        driver.switch_to.frame(iframes[0])
+        try:
+            WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.ID, "table-bottom")))
+            return True
+        except TimeoutException:
+            return False
+        finally:
+            driver.switch_to.default_content()
 
     def limpiar_dinero(self, valor_str):
         try:
@@ -76,7 +109,9 @@ class Command(BaseCommand):
         chrome_options = Options()
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
-        # chrome_options.add_argument("--headless") # Habilitar para servidores
+        if not kwargs['con_ventana']:
+            chrome_options.add_argument("--headless=new")
+        chrome_options.add_argument("--window-size=1920,1080")
         driver = webdriver.Chrome(options=chrome_options)
         
         # ====================================================================
@@ -92,7 +127,9 @@ class Command(BaseCommand):
             WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.CSS_SELECTOR, ".btn-ver-carrera")))
             botones_carrera = driver.find_elements(By.CSS_SELECTOR, ".btn-ver-carrera")
             enlaces_carreras = list(set([b.get_attribute("href") for b in botones_carrera if b.get_attribute("href")]))
-                    
+            if kwargs['limite']:
+                enlaces_carreras = enlaces_carreras[:kwargs['limite']]
+
             self.stdout.write(self.style.SUCCESS(f'✅ Se detectaron {len(enlaces_carreras)} carreras.'))
 
             for i, enlace in enumerate(enlaces_carreras, 1):
@@ -114,7 +151,7 @@ class Command(BaseCommand):
                             valor = par.find_element(By.CSS_SELECTOR, ".contenido-info-carrera").text.strip()
                             if "duración" in llave:
                                 duracion_semestres = self.extraer_semestres(valor)
-                            elif "título" in llave:
+                            elif llave.startswith("título"):
                                 nivel_formacion = valor
                         except:
                             continue
@@ -141,17 +178,14 @@ class Command(BaseCommand):
                     )
 
                     # --- D. Aranceles ---
-                    try:
-                        botones_acordeon = driver.find_elements(By.CSS_SELECTOR, "button.buttom-acordion-carrera-26")
-                        for boton in botones_acordeon:
-                            if "aranceles" in boton.text.lower():
-                                driver.execute_script("arguments[0].scrollIntoView(true);", boton)
-                                time.sleep(0.5)
-                                driver.execute_script("arguments[0].click();", boton)
-                                time.sleep(2) 
-                                break
-                    except Exception as e_acordeon:
-                        self.stdout.write(self.style.WARNING(f"    [*] No se pudo abrir el acordeón de aranceles: {e_acordeon}"))
+                    self.abrir_acordeon_aranceles(driver)
+
+                    # El iframe nuevo del portal puede responder 404; el servicio siga3 entrega la misma tabla
+                    if not self.aranceles_cargados(driver):
+                        iframe = driver.find_element(By.CSS_SELECTOR, "iframe.iframe-aranceles")
+                        url_aranceles = f"{URL_ARANCELES_SIGA3}?{urlsplit(iframe.get_attribute('src')).query}"
+                        driver.execute_script("arguments[0].src = arguments[1];", iframe, url_aranceles)
+                        time.sleep(2)
 
                     try:
                         if not driver.find_elements(By.CSS_SELECTOR, "iframe.iframe-aranceles"):
@@ -284,7 +318,11 @@ class Command(BaseCommand):
                             EC.presence_of_element_located((By.CSS_SELECTOR, "h2.component-heading"))
                         )
                         nombre_limpio = h2_element.text.replace("INACAP", "").strip()
-                        
+                        nombre_limpio = re.sub(r'^(Red\s+)?Crea\s+Empresas?\s+', '', nombre_limpio, flags=re.IGNORECASE)
+                        if not nombre_limpio:
+                            self.stdout.write(self.style.WARNING(f"  [!] Sede sin nombre en {url_sede}"))
+                            continue
+
                         # Extraer dirección usando el enlace de Google Maps o el ID del fragmento
                         direccion_limpia = "Dirección no disponible"
                         try:

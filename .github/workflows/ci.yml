@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [ "main" ]
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend Django
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: miayudante_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      SECRET_KEY: clave-solo-para-ci
+      DEBUG: 'True'
+      ALLOWED_HOSTS: localhost,127.0.0.1
+      DB_NAME: miayudante_ci
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_HOST: 127.0.0.1
+      DB_PORT: '5432'
+      OPENAI_API_KEY: clave-solo-para-ci
+      AWS_STORAGE_BUCKET_NAME: bucket-solo-para-ci
+      AWS_S3_REGION_NAME: us-east-1
+    defaults:
+      run:
+        working-directory: backend_api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+          cache: pip
+      - run: pip install -r ../requirements.txt
+      - run: python manage.py check
+      - run: python manage.py makemigrations --check --dry-run
+      - run: python manage.py migrate --noinput
+      - run: python manage.py test
+      - run: python manage.py collectstatic --noinput --dry-run
+
+  frontend:
+    name: Frontend PHP
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          coverage: none
+      - run: find frontend -name '*.php' -print0 | xargs -0 -n1 php -l
