@@ -1,6 +1,7 @@
 import os
 import time
 import re
+import unicodedata
 import boto3
 import requests
 import io
@@ -26,6 +27,11 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument('--limite', type=int, help='Procesa solo esta cantidad de carreras')
         parser.add_argument('--con-ventana', action='store_true', help='Muestra Chrome en lugar de usar modo headless')
+        parser.add_argument('--carrera', action='append', help='Procesa solo las carreras cuya URL contiene este texto (repetible)')
+
+    def normalizar_sede(self, texto):
+        sin_tildes = unicodedata.normalize('NFKD', texto).encode('ascii', 'ignore').decode()
+        return re.sub(r'[^a-z0-9]+', ' ', sin_tildes.lower()).strip()
 
     def abrir_acordeon_aranceles(self, driver):
         try:
@@ -127,6 +133,8 @@ class Command(BaseCommand):
             WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.CSS_SELECTOR, ".btn-ver-carrera")))
             botones_carrera = driver.find_elements(By.CSS_SELECTOR, ".btn-ver-carrera")
             enlaces_carreras = list(set([b.get_attribute("href") for b in botones_carrera if b.get_attribute("href")]))
+            if kwargs['carrera']:
+                enlaces_carreras = [e for e in enlaces_carreras if any(c in e for c in kwargs['carrera'])]
             if kwargs['limite']:
                 enlaces_carreras = enlaces_carreras[:kwargs['limite']]
 
@@ -242,17 +250,26 @@ class Command(BaseCommand):
                                 opciones_validas = len(Select(select_element_initial).options)
                                 
                                 for i in range(1, opciones_validas):
-                                    select_element = WebDriverWait(driver, 5).until(
-                                        EC.element_to_be_clickable((By.NAME, "o[0][sede_ccod]"))
-                                    )
-                                    driver.execute_script("arguments[0].scrollIntoView(true);", select_element)
-                                    time.sleep(0.5) 
-                                    
-                                    Select(select_element).select_by_index(i)
-                                    time.sleep(3) 
-                                    
-                                    extraer_datos_tabla()
-                                    
+                                    # Cada selección recarga la tabla: se reintenta si el selector queda obsoleto
+                                    for intento in range(1, 4):
+                                        try:
+                                            select_element = WebDriverWait(driver, 10).until(
+                                                EC.element_to_be_clickable((By.NAME, "o[0][sede_ccod]"))
+                                            )
+                                            driver.execute_script("arguments[0].scrollIntoView(true);", select_element)
+                                            time.sleep(0.5)
+
+                                            Select(select_element).select_by_index(i)
+                                            WebDriverWait(driver, 15).until(EC.staleness_of(select_element))
+                                            WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.ID, "table-bottom")))
+
+                                            extraer_datos_tabla()
+                                            break
+                                        except (StaleElementReferenceException, TimeoutException) as e_sede_tabla:
+                                            if intento == 3:
+                                                self.stdout.write(self.style.WARNING(f"    [!] Sede {i}/{opciones_validas - 1} omitida: {type(e_sede_tabla).__name__}"))
+                                            time.sleep(2)
+
                             except TimeoutException:
                                 extraer_datos_tabla()
 
@@ -261,7 +278,7 @@ class Command(BaseCommand):
                     except TimeoutException:
                         self.stdout.write(self.style.WARNING("    [!] Tiempo de espera agotado cargando los aranceles."))
                     except Exception as e_iframe:
-                        pass
+                        self.stdout.write(self.style.ERROR(f"    [!] Error leyendo aranceles de {nombre_carrera}: {type(e_iframe).__name__}: {e_iframe}"))
                     finally:
                         driver.switch_to.default_content()
                     
@@ -313,21 +330,18 @@ class Command(BaseCommand):
                     try:
                         driver.get(url_sede)
                         
-                        # Extraer el nombre de la sede limpiando el "INACAP"
-                        h2_element = WebDriverWait(driver, 10).until(
+                        WebDriverWait(driver, 10).until(
                             EC.presence_of_element_located((By.CSS_SELECTOR, "h2.component-heading"))
                         )
-                        nombre_limpio = h2_element.text.replace("INACAP", "").strip()
-                        nombre_limpio = re.sub(r'^(Red\s+)?Crea\s+Empresas?\s+', '', nombre_limpio, flags=re.IGNORECASE)
-                        if not nombre_limpio:
-                            self.stdout.write(self.style.WARNING(f"  [!] Sede sin nombre en {url_sede}"))
-                            continue
 
-                        # Extraer dirección usando el enlace de Google Maps o el ID del fragmento
+                        # El título de la página puede venir vacío o como "Red Crea Empresa X": el nombre sale de la URL
+                        nombre_slug = url_sede.rstrip('/').rsplit('/', 1)[-1].removeprefix('sede-')
+
+                        # La dirección es la primera línea del bloque de contacto
                         direccion_limpia = "Dirección no disponible"
                         try:
-                            dir_element = driver.find_element(By.CSS_SELECTOR, ".container-contacto-sede a[href*='google.com/maps']")
-                            direccion_limpia = dir_element.text.strip()
+                            contacto = driver.find_element(By.CSS_SELECTOR, ".container-contacto-sede")
+                            direccion_limpia = contacto.text.strip().splitlines()[0].strip()
                         except:
                             try:
                                 dir_element = driver.find_element(By.ID, "fragment-mtpt-link")
@@ -336,14 +350,15 @@ class Command(BaseCommand):
                                 pass
                                 
                         # Actualizar la Base de Datos
-                        sede_obj = Sede.objects.filter(nombre_sede__icontains=nombre_limpio).first()
+                        nombre_buscado = self.normalizar_sede(nombre_slug)
+                        sede_obj = next((s for s in Sede.objects.all() if self.normalizar_sede(s.nombre_sede) == nombre_buscado), None)
                         if sede_obj:
                             sede_obj.direccion = direccion_limpia
                             sede_obj.save()
                             self.stdout.write(self.style.SUCCESS(f"  [OK] Dirección actualizada en BD: {direccion_limpia}"))
                         else:
                             # Por seguridad, si la sede no existía en aranceles, se crea
-                            Sede.objects.create(nombre_sede=nombre_limpio, direccion=direccion_limpia, region="Por definir")
+                            Sede.objects.create(nombre_sede=nombre_slug.replace('-', ' ').title(), direccion=direccion_limpia, region="Por definir")
                             self.stdout.write(self.style.SUCCESS(f"  [+] Sede creada en BD con dirección: {direccion_limpia}"))
                             
                     except Exception as e_sede:
