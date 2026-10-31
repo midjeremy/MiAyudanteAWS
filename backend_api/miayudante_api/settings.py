@@ -16,8 +16,8 @@ from dotenv import load_dotenv
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Cargar el archivo .env (debe estar en la misma ruta que manage.py)
-load_dotenv(os.path.join(BASE_DIR, '.env'))
+# Cargar el archivo .env (debe estar en la raíz del repositorio)
+load_dotenv(BASE_DIR.parent / '.env')
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
@@ -28,7 +28,7 @@ SECRET_KEY = os.getenv('SECRET_KEY')
 DEBUG = os.getenv('DEBUG') == 'True'
 
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [host.strip() for host in os.getenv('ALLOWED_HOSTS', '').split(',') if host.strip()]
 
 
 # Application definition
@@ -125,12 +125,9 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/6.1/howto/static-files/
 
-STATIC_URL = 'static/'
-
-# Configuración de CORS para el Frontend PHP/Vue[cite: 1]
-cors_origins = os.getenv('CORS_ALLOWED_ORIGINS')
-if cors_origins:
-    CORS_ALLOWED_ORIGINS = cors_origins.split(',')
+# /static/ lo usa el frontend PHP; Django sirve los suyos en otra ruta
+STATIC_URL = 'django-static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # Integración del Agente Conversacional[cite: 1]
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
@@ -156,7 +153,14 @@ AWS_SESSION_TOKEN = os.getenv('AWS_SESSION_TOKEN')
 # Configuraciones adicionales recomendadas para S3
 AWS_S3_FILE_OVERWRITE = False
 AWS_DEFAULT_ACL = None
-AWS_S3_CUSTOM_DOMAIN = f'{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com'
+AWS_S3_CUSTOM_DOMAIN = f'{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com' if AWS_STORAGE_BUCKET_NAME else None
 
 # Indicar a Django que suba los archivos multimedia (ej. mallas_pdf) a S3
-DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
+STORAGES = {
+    'default': {
+        'BACKEND': 'storages.backends.s3boto3.S3Boto3Storage',
+    },
+    'staticfiles': {
+        'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage',
+    },
+}
