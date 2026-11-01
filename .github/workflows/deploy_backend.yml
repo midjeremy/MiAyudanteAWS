@@ -40,7 +40,7 @@ jobs:
 
             cd /home/ubuntu/MiAyudanteAWS
             git fetch origin main
-            git reset --hard origin/main
+            git checkout -f -B main origin/main
 
             # Instalar dependencias en el venv usando el requirements.txt de la raíz
             [ -d venv ] || python3 -m venv venv
@@ -61,9 +61,19 @@ jobs:
             /home/ubuntu/MiAyudanteAWS/venv/bin/python manage.py migrate --noinput
             /home/ubuntu/MiAyudanteAWS/venv/bin/python manage.py collectstatic --noinput
 
+            # Las tareas automáticas de Ubuntu pueden tener apt bloqueado por unos minutos
+            apt_con_reintentos() {
+              for intento in 1 2 3 4 5 6 7 8 9 10; do
+                sudo DEBIAN_FRONTEND=noninteractive apt-get "$@" && return 0
+                echo "apt ocupado (intento $intento/10), reintentando en 30 segundos..."
+                sleep 30
+              done
+              return 1
+            }
+
             # Aplicar parches de PHP 8.5 (PHP2Shell: mínimo 8.5.12)
-            sudo apt-get update -y
-            sudo DEBIAN_FRONTEND=noninteractive apt-get install --only-upgrade -y php8.5 php8.5-fpm php8.5-cli php8.5-pgsql php8.5-curl
+            apt_con_reintentos update -y
+            apt_con_reintentos install --only-upgrade -y php8.5 php8.5-fpm php8.5-cli php8.5-pgsql php8.5-curl
             if ! php8.5 -r 'exit(version_compare(PHP_VERSION, "8.5.12", ">=") ? 0 : 1);'; then
               echo "ERROR: PHP anterior a 8.5.12, despliegue cancelado"
               exit 1
