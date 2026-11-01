@@ -1,8 +1,6 @@
 import os
 import time
 import re
-import unicodedata
-import boto3
 import requests
 import io
 from urllib.parse import urlsplit
@@ -17,9 +15,12 @@ from selenium.webdriver.support.ui import Select
 from selenium.common.exceptions import TimeoutException, StaleElementReferenceException
 
 # Importar modelos de la aplicación 'scraper'
-from scraper.models import Institucion, Carrera, Sede, Jornada, OfertaAcademica
+from scraper.catalogos import clasificar_nivel, normalizar_jornada, normalizar_texto, region_de_sede
+from scraper.etl import TASA_MINIMA_EXITO, cerrar_lote, crear_cliente_s3, retirar_ofertas_obsoletas, subir_json_crudo, tasa_exito
+from scraper.models import Institucion, Carrera, LoteScrapingS3, Sede, Jornada, OfertaAcademica
 
 URL_ARANCELES_SIGA3 = "https://siga3.inacap.cl/fup1.5/ofertas/contenidoCarrerasPorArea.asp"
+MINIMO_CARRERAS = 60
 
 class Command(BaseCommand):
     help = 'Extrae el catálogo de INACAP, sube mallas a S3, procesa aranceles y actualiza direcciones de sedes'
@@ -28,10 +29,6 @@ class Command(BaseCommand):
         parser.add_argument('--limite', type=int, help='Procesa solo esta cantidad de carreras')
         parser.add_argument('--con-ventana', action='store_true', help='Muestra Chrome en lugar de usar modo headless')
         parser.add_argument('--carrera', action='append', help='Procesa solo las carreras cuya URL contiene este texto (repetible)')
-
-    def normalizar_sede(self, texto):
-        sin_tildes = unicodedata.normalize('NFKD', texto).encode('ascii', 'ignore').decode()
-        return re.sub(r'[^a-z0-9]+', ' ', sin_tildes.lower()).strip()
 
     def abrir_acordeon_aranceles(self, driver):
         try:
@@ -76,7 +73,7 @@ class Command(BaseCommand):
     def procesar_malla_s3(self, url_pdf, nombre_carrera, s3_client, bucket_name):
         try:
             self.stdout.write(f"  -> Descargando malla: {url_pdf}")
-            respuesta = requests.get(url_pdf)
+            respuesta = requests.get(url_pdf, timeout=30)
             respuesta.raise_for_status()
             
             archivo_en_memoria = io.BytesIO(respuesta.content)
@@ -98,19 +95,20 @@ class Command(BaseCommand):
     def handle(self, *args, **kwargs):
         self.stdout.write(self.style.WARNING('Iniciando pipeline ETL maestro de INACAP...'))
         
-        s3_client = boto3.client(
-            's3',
-            aws_access_key_id=getattr(settings, 'AWS_ACCESS_KEY_ID', ''),
-            aws_secret_access_key=getattr(settings, 'AWS_SECRET_ACCESS_KEY', ''),
-            aws_session_token=getattr(settings, 'AWS_SESSION_TOKEN', ''),
-            region_name=getattr(settings, 'AWS_S3_REGION_NAME', 'us-east-1')
-        )
+        s3_client = crear_cliente_s3()
         bucket_name = getattr(settings, 'AWS_STORAGE_BUCKET_NAME', 'tu-bucket-mallas')
 
         institucion, _ = Institucion.objects.get_or_create(
             codigo="INACAP",
             defaults={"nombre": "Instituto Nacional de Capacitación Profesional", "sitio_web": "https://www.inacap.cl"}
         )
+
+        lote = LoteScrapingS3.objects.create(institucion=institucion, estado_etl='EN_PROCESO')
+        errores = []
+        carreras_ok = 0
+        total_carreras = 0
+        ids_vigentes = set()
+        filas_crudas = []
 
         chrome_options = Options()
         chrome_options.add_argument("--no-sandbox")
@@ -138,6 +136,7 @@ class Command(BaseCommand):
             if kwargs['limite']:
                 enlaces_carreras = enlaces_carreras[:kwargs['limite']]
 
+            total_carreras = len(enlaces_carreras)
             self.stdout.write(self.style.SUCCESS(f'✅ Se detectaron {len(enlaces_carreras)} carreras.'))
 
             for i, enlace in enumerate(enlaces_carreras, 1):
@@ -151,7 +150,7 @@ class Command(BaseCommand):
                     
                     # --- A. Ficha Técnica ---
                     duracion_semestres = None
-                    nivel_formacion = "Profesional"
+                    titulo_otorgado = None
                     pares_ficha = driver.find_elements(By.XPATH, "//div[p[contains(@class, 'cabecera-info-carrera')]]")
                     for par in pares_ficha:
                         try:
@@ -160,12 +159,13 @@ class Command(BaseCommand):
                             if "duración" in llave:
                                 duracion_semestres = self.extraer_semestres(valor)
                             elif llave.startswith("título"):
-                                nivel_formacion = valor
+                                titulo_otorgado = valor
                         except:
                             continue
 
                     # --- B. Captura de PDF y Subida a S3 ---
                     ruta_s3 = None
+                    url_pdf = None
                     try:
                         enlace_pdf = WebDriverWait(driver, 5).until(
                             EC.presence_of_element_located((By.XPATH, "//a[contains(@href, 'repo.inacapmovil.cl/pdf_mallas')]"))
@@ -174,19 +174,23 @@ class Command(BaseCommand):
                         ruta_s3 = self.procesar_malla_s3(url_pdf, nombre_carrera, s3_client, bucket_name)
                     except TimeoutException:
                         self.stdout.write(self.style.WARNING(f"  [!] Sin enlace PDF visible para {nombre_carrera}"))
+                        errores.append(f"Sin malla: {nombre_carrera}")
 
                     # --- C. Guardar Carrera en PostgreSQL ---
                     carrera_obj, _ = Carrera.objects.update_or_create(
                         nombre_carrera=nombre_carrera,
                         institucion=institucion,
                         defaults={
-                            'nivel_formacion': nivel_formacion[:50],
+                            'nivel_formacion': clasificar_nivel(nombre_carrera, duracion_semestres),
+                            'titulo_otorgado': titulo_otorgado[:255] if titulo_otorgado else None,
                             'duracion_semestres': duracion_semestres,
-                            's3_url_malla_pdf': ruta_s3
+                            's3_url_malla_pdf': ruta_s3,
+                            'url_malla': url_pdf.split('?')[0] if url_pdf else None
                         }
                     )
 
                     # --- D. Aranceles ---
+                    ofertas_carrera = 0
                     self.abrir_acordeon_aranceles(driver)
 
                     # El iframe nuevo del portal puede responder 404; el servicio siga3 entrega la misma tabla
@@ -199,6 +203,7 @@ class Command(BaseCommand):
                     try:
                         if not driver.find_elements(By.CSS_SELECTOR, "iframe.iframe-aranceles"):
                             self.stdout.write(self.style.WARNING("    [*] No hay tabla de aranceles publicada para esta carrera."))
+                            errores.append(f"Sin tabla de aranceles: {nombre_carrera}")
                         else:
                             WebDriverWait(driver, 15).until(
                                 EC.frame_to_be_available_and_switch_to_it((By.CSS_SELECTOR, "iframe.iframe-aranceles"))
@@ -208,13 +213,14 @@ class Command(BaseCommand):
                             )
 
                             def extraer_datos_tabla():
+                                nonlocal ofertas_carrera
                                 filas_borde = driver.find_elements(By.CSS_SELECTOR, "#table-bottom tr.borde")
                                 for fila in filas_borde:
                                     try:
                                         columnas = fila.find_elements(By.TAG_NAME, "td")
                                         if len(columnas) >= 5:
                                             nombre_sede_bruto = columnas[0].text.strip() or "Sede No Especificada"
-                                            horario_bruto = columnas[2].text.strip() or "Diurna"
+                                            horario_bruto = columnas[2].text.strip()
                                             
                                             texto_matricula = columnas[3].text.strip() if columnas[3].text.strip() else "0"
                                             texto_semestral = columnas[4].text.strip() if columnas[4].text.strip() else "0"
@@ -226,22 +232,37 @@ class Command(BaseCommand):
                                             sede_obj, _ = Sede.objects.get_or_create(
                                                 nombre_sede=nombre_sede_bruto,
                                                 institucion=institucion,
-                                                defaults={'region': 'Por definir'}
                                             )
-                                            jornada_obj, _ = Jornada.objects.get_or_create(
-                                                tipo_jornada=horario_bruto
+                                            sede_obj.region = region_de_sede(nombre_sede_bruto)
+                                            sede_obj.save(update_fields=['region'])
+
+                                            tipo_jornada, modalidad = normalizar_jornada(horario_bruto, nombre_sede_bruto)
+                                            jornada_obj, _ = Jornada.objects.update_or_create(
+                                                tipo_jornada=tipo_jornada,
+                                                defaults={'modalidad': modalidad}
                                             )
 
-                                            OfertaAcademica.objects.update_or_create(
+                                            oferta_obj, _ = OfertaAcademica.objects.update_or_create(
                                                 institucion=institucion,
                                                 carrera=carrera_obj,
                                                 sede=sede_obj,
                                                 jornada=jornada_obj,
                                                 defaults={
+                                                    'lote_scraping': lote,
                                                     'matricula_clp': matricula_clp,
+                                                    'arancel_semestral_clp': semestral_clp,
                                                     'arancel_anual_clp': arancel_anual_clp
                                                 }
                                             )
+                                            ids_vigentes.add(oferta_obj.id)
+                                            ofertas_carrera += 1
+                                            filas_crudas.append({
+                                                'carrera': nombre_carrera,
+                                                'sede': nombre_sede_bruto,
+                                                'horario': horario_bruto,
+                                                'matricula': texto_matricula,
+                                                'semestral': texto_semestral,
+                                            })
                                     except StaleElementReferenceException:
                                         continue
 
@@ -270,17 +291,25 @@ class Command(BaseCommand):
                                         except (StaleElementReferenceException, TimeoutException) as e_sede_tabla:
                                             if intento == 3:
                                                 self.stdout.write(self.style.WARNING(f"    [!] Sede {i}/{opciones_validas - 1} omitida: {type(e_sede_tabla).__name__}"))
+                                                errores.append(f"Sede omitida en {nombre_carrera}: {i}/{opciones_validas - 1}")
                                             time.sleep(2)
 
                             except TimeoutException:
                                 extraer_datos_tabla()
 
-                            self.stdout.write(self.style.SUCCESS(f"  [OK] Ofertas guardadas para {nombre_carrera}"))
+                            if ofertas_carrera:
+                                carreras_ok += 1
+                                self.stdout.write(self.style.SUCCESS(f"  [OK] Ofertas guardadas para {nombre_carrera}"))
+                            else:
+                                self.stdout.write(self.style.WARNING(f"    [!] Sin ofertas leídas para {nombre_carrera}"))
+                                errores.append(f"Sin ofertas: {nombre_carrera}")
 
                     except TimeoutException:
                         self.stdout.write(self.style.WARNING("    [!] Tiempo de espera agotado cargando los aranceles."))
+                        errores.append(f"Tiempo agotado en aranceles: {nombre_carrera}")
                     except Exception as e_iframe:
                         self.stdout.write(self.style.ERROR(f"    [!] Error leyendo aranceles de {nombre_carrera}: {type(e_iframe).__name__}: {e_iframe}"))
+                        errores.append(f"Error en aranceles de {nombre_carrera}: {type(e_iframe).__name__}")
                     finally:
                         driver.switch_to.default_content()
                     
@@ -317,6 +346,7 @@ class Command(BaseCommand):
                     
                 except Exception as error_carrera:
                     self.stdout.write(self.style.ERROR(f'⚠️ Error al procesar {enlace}: {str(error_carrera)}'))
+                    errores.append(f"Error en {enlace}: {type(error_carrera).__name__}")
                     continue
 
             self.stdout.write(self.style.SUCCESS(f'\n✅ Fase 1 completada. Se guardaron {len(lista_urls_sedes)} URLs de sedes únicas.'))
@@ -352,15 +382,15 @@ class Command(BaseCommand):
                                 pass
                                 
                         # Actualizar la Base de Datos
-                        nombre_buscado = self.normalizar_sede(nombre_slug)
-                        sede_obj = next((s for s in Sede.objects.filter(institucion=institucion) if self.normalizar_sede(s.nombre_sede) == nombre_buscado), None)
+                        nombre_buscado = normalizar_texto(nombre_slug)
+                        sede_obj = next((s for s in Sede.objects.filter(institucion=institucion) if normalizar_texto(s.nombre_sede) == nombre_buscado), None)
                         if sede_obj:
                             sede_obj.direccion = direccion_limpia
                             sede_obj.save()
                             self.stdout.write(self.style.SUCCESS(f"  [OK] Dirección actualizada en BD: {direccion_limpia}"))
                         else:
                             # Por seguridad, si la sede no existía en aranceles, se crea
-                            Sede.objects.create(nombre_sede=nombre_slug.replace('-', ' ').title(), institucion=institucion, direccion=direccion_limpia, region="Por definir")
+                            Sede.objects.create(nombre_sede=nombre_slug.replace('-', ' ').title(), institucion=institucion, direccion=direccion_limpia, region=region_de_sede(nombre_slug))
                             self.stdout.write(self.style.SUCCESS(f"  [+] Sede creada en BD con dirección: {direccion_limpia}"))
                             
                     except Exception as e_sede:
@@ -368,9 +398,27 @@ class Command(BaseCommand):
                     
                     time.sleep(1) # Pausa entre páginas de sedes
 
-            self.stdout.write(self.style.SUCCESS('\n✅ ¡Proceso maestro finalizado! Todo sincronizado con PostgreSQL.'))
+            try:
+                lote.s3_url_json_raw = subir_json_crudo(s3_client, filas_crudas, 'inacap')
+                lote.save(update_fields=['s3_url_json_raw'])
+            except Exception as e_s3:
+                self.stdout.write(self.style.WARNING(f'[!] No se pudo guardar el JSON crudo en S3: {e_s3}'))
+
+            tasa = tasa_exito(carreras_ok, total_carreras)
+            carga_completa = (
+                not kwargs['carrera'] and not kwargs['limite']
+                and total_carreras >= MINIMO_CARRERAS and tasa >= TASA_MINIMA_EXITO and not errores
+            )
+            retiradas = retirar_ofertas_obsoletas(institucion, ids_vigentes) if carga_completa else 0
+            estado = 'COMPLETADO' if tasa >= TASA_MINIMA_EXITO and not errores else 'PARCIAL'
+            cerrar_lote(lote, estado, carreras_ok, total_carreras, len(ids_vigentes), errores)
+            self.stdout.write(self.style.SUCCESS(
+                f'\n✅ Lote {lote.id} ({estado}): {carreras_ok}/{total_carreras} carreras, '
+                f'{len(ids_vigentes)} ofertas, {retiradas} retiradas, {len(errores)} errores. KPI-01: {tasa}%.'
+            ))
 
         except Exception as e:
             self.stdout.write(self.style.ERROR(f'❌ Error crítico en el scraper maestro: {str(e)}'))
+            cerrar_lote(lote, 'ERROR', carreras_ok, total_carreras, len(ids_vigentes), [*errores, f'Crítico: {e}'])
         finally:
             driver.quit()

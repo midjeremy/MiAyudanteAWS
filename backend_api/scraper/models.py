@@ -16,6 +16,10 @@ class LoteScrapingS3(models.Model):
     fecha_extraccion = models.DateTimeField(auto_now_add=True)
     total_registros = models.IntegerField(default=0)
     estado_etl = models.CharField(max_length=30, default='PENDIENTE')
+    total_ofertas = models.IntegerField(default=0)
+    errores = models.IntegerField(default=0)
+    tasa_exito = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
+    detalle_errores = models.TextField(blank=True, default='')
 
     def __str__(self):
         return f"Lote {self.id} - {self.institucion.nombre}"
@@ -25,7 +29,9 @@ class Carrera(models.Model):
     nombre_carrera = models.CharField(max_length=200)
     nivel_formacion = models.CharField(max_length=50, blank=True, null=True)
     duracion_semestres = models.IntegerField(blank=True, null=True)
+    titulo_otorgado = models.CharField(max_length=255, blank=True, null=True)
     s3_url_malla_pdf = models.TextField(blank=True, null=True)
+    url_malla = models.URLField(max_length=500, blank=True, null=True)
 
     def __str__(self):
         return self.nombre_carrera
@@ -55,6 +61,7 @@ class OfertaAcademica(models.Model):
     
     arancel_anual_clp = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True)
     arancel_mensual_clp = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True)
+    arancel_semestral_clp = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True)
     matricula_clp = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True)
     actualizado_en = models.DateTimeField(auto_now=True)
 
