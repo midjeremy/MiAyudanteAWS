@@ -10,11 +10,17 @@ def api_catalogo_inacap(request):
             "institucion": oferta.institucion.nombre,
             "carrera": oferta.carrera.nombre_carrera,
             "nivel": oferta.carrera.nivel_formacion,
+            "titulo": oferta.carrera.titulo_otorgado,
             "duracion_semestres": oferta.carrera.duracion_semestres,
+            "malla_url": oferta.carrera.url_malla,
             "sede": oferta.sede.nombre_sede,
+            "region": oferta.sede.region,
+            "direccion": oferta.sede.direccion,
             "jornada": oferta.jornada.tipo_jornada,
+            "modalidad": oferta.jornada.modalidad,
             "valor_matricula": str(oferta.matricula_clp) if oferta.matricula_clp else "0",
             "valor_mensual": str(oferta.arancel_mensual_clp) if oferta.arancel_mensual_clp else None,
+            "valor_semestral": str(oferta.arancel_semestral_clp) if oferta.arancel_semestral_clp else None,
             "valor_anual": str(oferta.arancel_anual_clp) if oferta.arancel_anual_clp else None
         })
         

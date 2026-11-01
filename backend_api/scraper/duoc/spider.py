@@ -1,5 +1,6 @@
 import re
 
+from scrapy import Request
 from scrapy.spiders import SitemapSpider
 
 
@@ -9,20 +10,14 @@ def limpiar_dinero(texto):
 
 
 def extraer_jornadas(texto):
-    """Convierte 'Jornada y Modalidad: Diurna y vespertina' en ['Diurna', 'Vespertina']."""
+    """Separa 'Jornada y Modalidad: Diurna y vespertina' en cada jornada publicada."""
     valor = (texto or '').split(':', 1)[-1]
     partes = re.split(r'\s*(?:,|/|\sy\s)\s*', valor.strip())
-    jornadas = [parte.strip().capitalize() for parte in partes if parte.strip()]
-    return ['Online' if 'online' in jornada.lower() else jornada for jornada in jornadas]
+    return [parte.strip() for parte in partes if parte.strip()]
 
 
 def normalizar_nombre_sede(texto):
     return re.sub(r'^(sede|campus)\s+', '', (texto or '').strip(), flags=re.IGNORECASE).strip()
-
-
-def normalizar_region(texto):
-    region = re.sub(r'^sedes\s+(?:en\s+)?', '', (texto or '').strip(), flags=re.IGNORECASE)
-    return 'Online' if 'online' in region.lower() else region.capitalize()
 
 
 class DuocSpider(SitemapSpider):
@@ -50,29 +45,48 @@ class DuocSpider(SitemapSpider):
         duracion = response.xpath(
             '//h2[contains(., "DURACIÓN")]/following-sibling::div[1]//li/text()'
         ).get()
+        url_malla = response.css('[data-dmc-src]::attr(data-dmc-src)').get()
 
         ofertas = []
-        for grupo in response.css('section.dma-sa .dma-sa__grupo'):
-            region = normalizar_region(grupo.css('.dma-sa__grupo-titulo::text').get())
-            for tarjeta in grupo.css('.dma-sa__card'):
-                valores = ' '.join(tarjeta.css('.dma-sa__valores p::text').getall())
-                matricula = re.search(r'Matrícula semestral:\s*(\$[\d.]+)', valores)
-                arancel = re.search(r'Arancel mensual:\s*(\$[\d.]+)', valores)
-                ofertas.append({
-                    'sede': (tarjeta.css('.dma-sa__sede::text').get() or '').strip(),
-                    'region': region,
-                    'jornadas': extraer_jornadas(tarjeta.css('.dma-sa__jornada::text').get()),
-                    'matricula_clp': limpiar_dinero(matricula.group(1)) if matricula else None,
-                    'arancel_mensual_clp': limpiar_dinero(arancel.group(1)) if arancel else None,
-                })
+        for tarjeta in response.css('section.dma-sa .dma-sa__card'):
+            valores = ' '.join(tarjeta.css('.dma-sa__valores p::text').getall())
+            matricula = re.search(r'Matrícula semestral:\s*(\$[\d.]+)', valores)
+            arancel = re.search(r'Arancel mensual:\s*(\$[\d.]+)', valores)
+            ofertas.append({
+                'sede': (tarjeta.css('.dma-sa__sede::text').get() or '').strip(),
+                'jornadas': extraer_jornadas(tarjeta.css('.dma-sa__jornada::text').get()),
+                'matricula_clp': limpiar_dinero(matricula.group(1)) if matricula else None,
+                'arancel_mensual_clp': limpiar_dinero(arancel.group(1)) if arancel else None,
+            })
 
-        yield {
+        item = {
             'tipo': 'carrera',
             'url': response.url,
             'nombre': nombre,
             'duracion_semestres': limpiar_dinero(duracion),
+            'url_malla': url_malla,
             'ofertas': ofertas,
         }
+        if not url_malla:
+            yield item
+            return
+
+        # Varias carreras pueden compartir malla: dont_filter evita que se descarte la segunda
+        yield Request(
+            url_malla,
+            callback=self.parse_malla,
+            errback=self.malla_fallida,
+            cb_kwargs={'item': item},
+            dont_filter=True,
+        )
+
+    def parse_malla(self, response, item):
+        item['malla_html'] = response.text
+        yield item
+
+    def malla_fallida(self, failure):
+        self.logger.warning('No se pudo descargar la malla %s', failure.request.url)
+        yield failure.request.cb_kwargs['item']
 
     def parse_sede(self, response):
         direccion = response.xpath('//b[contains(., "Dirección:")]/following-sibling::text()[1]').get()
