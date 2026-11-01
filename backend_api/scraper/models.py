@@ -21,6 +21,7 @@ class LoteScrapingS3(models.Model):
         return f"Lote {self.id} - {self.institucion.nombre}"
 
 class Carrera(models.Model):
+    institucion = models.ForeignKey(Institucion, on_delete=models.CASCADE, null=True, blank=True)
     nombre_carrera = models.CharField(max_length=200)
     nivel_formacion = models.CharField(max_length=50, blank=True, null=True)
     duracion_semestres = models.IntegerField(blank=True, null=True)
@@ -30,6 +31,7 @@ class Carrera(models.Model):
         return self.nombre_carrera
 
 class Sede(models.Model):
+    institucion = models.ForeignKey(Institucion, on_delete=models.CASCADE, null=True, blank=True)
     nombre_sede = models.CharField(max_length=150)
     region = models.CharField(max_length=100, blank=True, null=True)
     direccion = models.CharField(max_length=255, blank=True, null=True)
@@ -52,6 +54,7 @@ class OfertaAcademica(models.Model):
     lote_scraping = models.ForeignKey(LoteScrapingS3, on_delete=models.SET_NULL, null=True, blank=True)
     
     arancel_anual_clp = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True)
+    arancel_mensual_clp = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True)
     matricula_clp = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True)
     actualizado_en = models.DateTimeField(auto_now=True)
 
