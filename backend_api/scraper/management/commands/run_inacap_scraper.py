@@ -185,7 +185,7 @@ class Command(BaseCommand):
                             'titulo_otorgado': titulo_otorgado[:255] if titulo_otorgado else None,
                             'duracion_semestres': duracion_semestres,
                             's3_url_malla_pdf': ruta_s3,
-                            'url_malla': url_pdf
+                            'url_malla': url_pdf.split('?')[0] if url_pdf else None
                         }
                     )
 
