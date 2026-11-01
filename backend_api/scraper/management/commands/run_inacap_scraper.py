@@ -178,6 +178,7 @@ class Command(BaseCommand):
                     # --- C. Guardar Carrera en PostgreSQL ---
                     carrera_obj, _ = Carrera.objects.update_or_create(
                         nombre_carrera=nombre_carrera,
+                        institucion=institucion,
                         defaults={
                             'nivel_formacion': nivel_formacion[:50],
                             'duracion_semestres': duracion_semestres,
@@ -224,6 +225,7 @@ class Command(BaseCommand):
                                             
                                             sede_obj, _ = Sede.objects.get_or_create(
                                                 nombre_sede=nombre_sede_bruto,
+                                                institucion=institucion,
                                                 defaults={'region': 'Por definir'}
                                             )
                                             jornada_obj, _ = Jornada.objects.get_or_create(
@@ -351,14 +353,14 @@ class Command(BaseCommand):
                                 
                         # Actualizar la Base de Datos
                         nombre_buscado = self.normalizar_sede(nombre_slug)
-                        sede_obj = next((s for s in Sede.objects.all() if self.normalizar_sede(s.nombre_sede) == nombre_buscado), None)
+                        sede_obj = next((s for s in Sede.objects.filter(institucion=institucion) if self.normalizar_sede(s.nombre_sede) == nombre_buscado), None)
                         if sede_obj:
                             sede_obj.direccion = direccion_limpia
                             sede_obj.save()
                             self.stdout.write(self.style.SUCCESS(f"  [OK] Dirección actualizada en BD: {direccion_limpia}"))
                         else:
                             # Por seguridad, si la sede no existía en aranceles, se crea
-                            Sede.objects.create(nombre_sede=nombre_slug.replace('-', ' ').title(), direccion=direccion_limpia, region="Por definir")
+                            Sede.objects.create(nombre_sede=nombre_slug.replace('-', ' ').title(), institucion=institucion, direccion=direccion_limpia, region="Por definir")
                             self.stdout.write(self.style.SUCCESS(f"  [+] Sede creada en BD con dirección: {direccion_limpia}"))
                             
                     except Exception as e_sede:

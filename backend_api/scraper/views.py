@@ -14,7 +14,8 @@ def api_catalogo_inacap(request):
             "sede": oferta.sede.nombre_sede,
             "jornada": oferta.jornada.tipo_jornada,
             "valor_matricula": str(oferta.matricula_clp) if oferta.matricula_clp else "0",
-            "valor_anual": str(oferta.arancel_anual_clp) if oferta.arancel_anual_clp else "0"
+            "valor_mensual": str(oferta.arancel_mensual_clp) if oferta.arancel_mensual_clp else None,
+            "valor_anual": str(oferta.arancel_anual_clp) if oferta.arancel_anual_clp else None
         })
         
     return JsonResponse(datos, safe=False)
