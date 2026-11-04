@@ -90,6 +90,7 @@ foreach ($ids_guardados as $id) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mis Carreras Guardadas - Mi Ayudante</title>
     <link rel="stylesheet" href="/static/css/carreras.css">
+    <link rel="stylesheet" href="/static/css/responsive.css">
 </head>
 <body class="portal-body">
 

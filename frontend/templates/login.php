@@ -1,5 +1,6 @@
 <?php
 session_start();
+require_once 'api.php';
 $error = "";
 
 // Inicializar la variable de correo como vacía al entrar a la página
@@ -18,32 +19,24 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     if (empty($correo) || empty($password)) {
         $error = "Por favor, completa todos los campos.";
     } else {
-        $encontrado = false;
-        $nombre_usuario = "";
+        // Django valida la contraseña y entrega un token JWT
+        $resultado = api_post('/api/v1/auth/login/', ['correo' => $correo, 'password' => $password]);
 
-        // Recorrer la lista de usuarios registrados para validar
-        if (isset($_SESSION['usuarios_registrados'])) {
-            foreach ($_SESSION['usuarios_registrados'] as $user) {
-                if ($user['correo'] === $correo && $user['password'] === $password) {
-                    $encontrado = true;
-                    $nombre_usuario = $user['nombre'];
-                    break;
-                }
-            }
-        }
-
-        if ($encontrado) {
-            // Guardar sesión activa del usuario correcto
-            $_SESSION['usuario'] = [
-                'correo' => $correo,
-                'nombre' => $nombre_usuario
-            ];
+        if ($resultado['codigo'] === 200) {
+            // Nuevo identificador de sesión al iniciar sesión, para evitar secuestro de sesión
+            session_regenerate_id(true);
+            $_SESSION['usuario'] = $resultado['datos']['usuario'];
+            $_SESSION['token_acceso'] = $resultado['datos']['access'];
+            $_SESSION['token_refresco'] = $resultado['datos']['refresh'];
 
             header("Location: index.php");
             exit();
-        } else {
-            // Si pones un correo al azar o contraseña errónea, muestra error y no entra
+        } elseif ($resultado['codigo'] === 401) {
             $error = "Correo o contraseña incorrectos, o la cuenta no existe.";
+        } elseif ($resultado['codigo'] === 429) {
+            $error = "Demasiados intentos. Espera un minuto e inténtalo de nuevo.";
+        } else {
+            $error = "No pudimos conectar con el servidor. Inténtalo más tarde.";
         }
     }
 }
@@ -56,6 +49,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Iniciar sesión - Mi Ayudante</title>
     <link rel="stylesheet" href="/static/css/login.css">
+    <link rel="stylesheet" href="/static/css/responsive.css">
 </head>
 <body class="login-body">
 

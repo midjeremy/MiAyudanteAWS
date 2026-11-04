@@ -1,10 +1,6 @@
 <?php
 session_start();
-
-// Inicializar el listado de usuarios en sesión si no existe
-if (!isset($_SESSION['usuarios_registrados'])) {
-    $_SESSION['usuarios_registrados'] = [];
-}
+require_once 'api.php';
 
 $error = "";
 $exito = "";
@@ -18,27 +14,23 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     if (empty($correo) || empty($nombre) || empty($apellidos) || empty($password)) {
         $error = "Por favor, completa todos los campos.";
     } else {
-        // Verificar si el correo ya fue registrado antes
-        $correo_repetido = false;
-        foreach ($_SESSION['usuarios_registrados'] as $u) {
-            if ($u['correo'] === $correo) {
-                $correo_repetido = true;
-                break;
-            }
-        }
+        // Django crea la cuenta y guarda la contraseña cifrada
+        $resultado = api_post('/api/v1/auth/registro/', [
+            'correo' => $correo,
+            'nombre' => $nombre,
+            'apellidos' => $apellidos,
+            'password' => $password,
+        ]);
 
-        if ($correo_repetido) {
-            $error = "Este correo ya está registrado. Prueba con otro.";
-        } else {
-            // Agregar el nuevo usuario al arreglo de la sesión
-            $_SESSION['usuarios_registrados'][] = [
-                'correo' => $correo,
-                'nombre' => $nombre . " " . $apellidos,
-                'password' => $password
-            ];
-
+        if ($resultado['codigo'] === 201) {
             $exito = "¡Cuenta creada con éxito! Redirigiendo al inicio de sesión...";
             header("refresh:2;url=login.php");
+        } elseif (in_array($resultado['codigo'], [400, 409], true)) {
+            $error = $resultado['datos']['error'] ?? "Revisa los datos ingresados.";
+        } elseif ($resultado['codigo'] === 429) {
+            $error = "Demasiados intentos. Espera un minuto e inténtalo de nuevo.";
+        } else {
+            $error = "No pudimos conectar con el servidor. Inténtalo más tarde.";
         }
     }
 }
@@ -51,6 +43,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Regístrate - Mi Ayudante</title>
     <link rel="stylesheet" href="/static/css/registro.css">
+    <link rel="stylesheet" href="/static/css/responsive.css">
 </head>
 <body class="login-body">
 
