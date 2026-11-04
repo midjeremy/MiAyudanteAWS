@@ -2,64 +2,48 @@
 //INICIAR LA SESIÓN Y CARGAR EL BFF (api.php)
 session_start();
 require_once 'api.php';
+require_once 'catalogo.php';
 
-//OBTENER EL CATÁLOGO COMPLETO DESDE DJANGO MEDIANTE cURL
-$catalogo_api = api_get('/api/v1/catalogo/'); 
+//LEER LOS IDs QUE SELECCIONÓ EL USUARIO EN CARRERAS.PHP (máximo 2)
+$ids_seleccionados = isset($_GET['ids']) ? array_slice(array_map('intval', (array) $_GET['ids']), 0, 2) : [];
 
-$todas_las_carreras = [];
+//PEDIR A DJANGO SOLO ESAS OFERTAS, POR SU ID REAL
+$carreras_por_id = [];
+if (!empty($ids_seleccionados)) {
+    $respuesta = api_get('/api/v1/ofertas/?' . http_build_query(['ids' => implode(',', $ids_seleccionados)]));
+    foreach ($respuesta['results'] ?? [] as $row) {
+        $inst_clave = strtolower($row['institucion_codigo'] ?? '');
+        $semestres = (int) ($row['duracion_semestres'] ?? 0);
+        $arancel = arancel_de_oferta($row);
 
-if (is_array($catalogo_api)) {
-    $contador = 1;
-    foreach ($catalogo_api as $row) {
-        // Asignar ID coincidente con la lista en carreras.php
-        $id_carrera = $row['id'] ?? $contador;
-
-        $institucion = $row['institucion'] ?? 'INACAP';
-        $inst_clave = (stripos($institucion, 'duoc') !== false) ? 'duoc' : 'inacap';
-        $logo_texto = ($inst_clave === 'duoc') ? 'DuocUC' : '■';
-        $logo_clase = ($inst_clave === 'duoc') ? 'duoc-logo' : 'square-logo';
-
-        $semestres = intval($row['duracion_semestres'] ?? 8);
-        $anos = round($semestres / 2, 1);
-
-        $arancel_raw = $row['valor_anual'] ?? 0;
-        $arancel_num = is_numeric($arancel_raw) ? intval($arancel_raw) : 0;
-
-        // Indexar por el ID de la carrera
-        $todas_las_carreras[$id_carrera] = [
-            'id' => $id_carrera,
-            'institucion' => $institucion,
+        $carreras_por_id[$row['id']] = [
+            'id' => $row['id'],
+            'institucion' => $row['institucion'] ?? '',
             'nombre' => $row['carrera'] ?? '',
             'sede_nombre' => $row['sede'] ?? '',
-            'sede_ubicacion' => $row['region'] ?? 'Santiago, RM',
-            'tema_color' => ($inst_clave === 'duoc') ? 'card-teal' : 'card-purple',   
-            'badge_color' => ($inst_clave === 'duoc') ? 'badge-teal' : 'badge-purple', 
-            'logo_text' => $logo_texto,
-            'logo_class' => $logo_clase,
-            'arancel' => $arancel_num,
-            'duracion_anos' => $anos,
-            'duracion_semestres' => $semestres,
-            'titulo' => $row['titulo'] ?? '',
-            'tipo_titulo' => $row['nivel'] ?? 'Título profesional',
-            'modalidad' => $row['modalidad'] ?? 'Presencial',
-            'jornada' => $row['jornada'] ?? 'Diurno',
+            'sede_ubicacion' => $row['region'] ?? 'Región no informada',
+            'tema_color' => ($inst_clave === 'duoc') ? 'card-teal' : 'card-purple',
+            'badge_color' => ($inst_clave === 'duoc') ? 'badge-teal' : 'badge-purple',
+            'logo_text' => ($inst_clave === 'duoc') ? 'DuocUC' : '■',
+            'logo_class' => ($inst_clave === 'duoc') ? 'duoc-logo' : 'square-logo',
+            'arancel' => $arancel['monto'],
+            'arancel_periodo' => $arancel['periodo'],
+            'duracion_anos' => $semestres ? round($semestres / 2, 1) : '-',
+            'duracion_semestres' => $semestres ?: '-',
+            'titulo' => $row['titulo'] ?? 'No informado',
+            'tipo_titulo' => $row['nivel'] ?? 'No informado',
+            'modalidad' => $row['modalidad'] ?? 'No informada',
+            'jornada' => $row['jornada'] ?? 'No informada',
             'link_malla' => $row['malla_url'] ?? '#'
         ];
-
-        $contador++;
     }
 }
 
-//LEER LOS IDs QUE SELECCIONÓ EL USUARIO EN CARRERAS.PHP
-$ids_seleccionados = isset($_GET['ids']) ? $_GET['ids'] : [];
-
-//BUSCAR LAS CARRERAS QUE COINCIDAN CON LOS IDs SELECCIONADOS
+//RESPETAR EL ORDEN EN QUE EL USUARIO LAS ELIGIÓ
 $carreras_seleccionadas = [];
-if (!empty($ids_seleccionados)) {
-    foreach ($ids_seleccionados as $id_sel) {
-        if (isset($todas_las_carreras[$id_sel])) {
-            $carreras_seleccionadas[] = $todas_las_carreras[$id_sel];
-        }
+foreach ($ids_seleccionados as $id_sel) {
+    if (isset($carreras_por_id[$id_sel])) {
+        $carreras_seleccionadas[] = $carreras_por_id[$id_sel];
     }
 }
 
@@ -221,17 +205,17 @@ $carrera2 = $carreras_seleccionadas[1] ?? null;
                         <div class="feature-label">
                             <span class="icon">💰</span>
                             <div>
-                                <strong>Arancel anual</strong>
+                                <strong>Arancel</strong>
                                 <span>Costo referencial</span>
                             </div>
                         </div>
                         <div class="feature-value">
                             <strong>$<?= number_format($carrera1['arancel'], 0, ',', '.') ?> CLP</strong>
-                            <span>Valor anual</span>
+                            <span><?= htmlspecialchars($carrera1['arancel_periodo']) ?></span>
                         </div>
                         <div class="feature-value">
                             <strong>$<?= number_format($carrera2['arancel'], 0, ',', '.') ?> CLP</strong>
-                            <span>Valor anual</span>
+                            <span><?= htmlspecialchars($carrera2['arancel_periodo']) ?></span>
                         </div>
                     </div>
 

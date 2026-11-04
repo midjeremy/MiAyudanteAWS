@@ -2,6 +2,7 @@
 //INICIAR LA SESIÓN Y CARGAR LA API BFF
 session_start();
 require_once 'api.php';
+require_once 'catalogo.php';
 
 if (!isset($_SESSION['favoritos'])) {
     $_SESSION['favoritos'] = [];
@@ -26,86 +27,51 @@ if (isset($_GET['toggle_fav'])) {
     exit;
 }
 
-//CONSUMIR EL CATÁLOGO DESDE DJANGO MEDIANTE cURL (BFF)
-$catalogo = api_get('/api/v1/catalogo/');
-if ($catalogo === null) {
-    $error_api = 'No se pudo cargar el catálogo. Inténtalo más tarde.';
-    $catalogo = [];
-}
-
-$todas_las_carreras = [];
-
-if (is_array($catalogo)) {
-    $contador = 1;
-    foreach ($catalogo as $row) {
-        $institucion = $row['institucion'] ?? 'INACAP';
-        $inst_clave = (stripos($institucion, 'duoc') !== false) ? 'duoc' : 'inacap';
-        $logo_texto = ($inst_clave === 'duoc') ? 'DuocUC' : 'inacap';
-        $logo_clase = ($inst_clave === 'duoc') ? 'duoc-logo' : 'square-logo';
-        
-        $nombre_carrera = $row['carrera'] ?? '';
-        $area_clave = (stripos($nombre_carrera, 'diseño') !== false) ? 'diseno' : 'tecnologia';
-        $categoria = ($area_clave === 'diseno') ? 'Diseño' : 'Tecnología';
-        $categoria_clase = ($area_clave === 'diseno') ? 'badge-pink' : 'badge-blue';
-
-        $sede = $row['sede'] ?? 'Santiago';
-        $sede_clave = strtolower(str_replace([' ', 'á', 'é', 'í', 'ó', 'ú'], ['_', 'a', 'e', 'i', 'o', 'u'], $sede));
-
-        $modalidad = $row['modalidad'] ?? 'Presencial';
-        $modalidad_clave = strtolower($modalidad);
-
-        $semestres = intval($row['duracion_semestres'] ?? 8);
-        $anos = round($semestres / 2, 1);
-        $duracion = $anos . ' años';
-
-        $arancel_val = $row['valor_anual'] ?? '0';
-        $arancel_formateado = is_numeric($arancel_val) ? '$' . number_format(intval($arancel_val), 0, ',', '.') : '$' . $arancel_val;
-
-        $todas_las_carreras[] = [
-            "id" => $row['id'] ?? $contador,
-            "nombre" => $nombre_carrera,
-            "institucion" => $institucion,
-            "inst_clave" => $inst_clave,
-            "logo_texto" => $logo_texto,
-            "logo_clase" => $logo_clase,
-            "categoria" => $categoria,
-            "area_clave" => $area_clave,
-            "categoria_clase" => $categoria_clase,
-            "ubicacion" => $sede,
-            "sede_clave" => $sede_clave,
-            "modalidad" => $modalidad,
-            "modalidad_clave" => $modalidad_clave,
-            "duracion" => $duracion,
-            "arancel" => $arancel_formateado
-        ];
-        $contador++;
-    }
-}
-
-//FILTROS DE BÚSQUEDA
+//FILTROS DE BÚSQUEDA: Django filtra y pagina, PHP solo arma la vista (BFF)
 $busqueda     = isset($_GET['q']) ? trim($_GET['q']) : '';
 $area         = isset($_GET['area']) ? $_GET['area'] : '';
 $institucion  = isset($_GET['institucion']) ? $_GET['institucion'] : '';
 $modalidad    = isset($_GET['modalidad']) ? $_GET['modalidad'] : '';
 $sede         = isset($_GET['sede']) ? $_GET['sede'] : '';
+$pagina       = max(1, intval($_GET['page'] ?? 1));
 
-$carreras = array_filter($todas_las_carreras, function ($carrera) use ($busqueda, $area, $institucion, $modalidad, $sede) {
-    if ($busqueda !== '') {
-        $texto     = mb_strtolower($busqueda);
-        $nombre    = mb_strtolower($carrera['nombre']);
-        $instName  = mb_strtolower($carrera['institucion']);
-        if (strpos($nombre, $texto) === false && strpos($instName, $texto) === false) {
-            return false;
-        }
-    }
-    if ($area !== '' && $carrera['area_clave'] !== $area) return false;
-    if ($institucion !== '' && $carrera['inst_clave'] !== $institucion) return false;
-    if ($modalidad !== '' && $carrera['modalidad_clave'] !== $modalidad) return false;
-    if ($sede !== '' && $carrera['sede_clave'] !== $sede) return false;
-    return true;
-});
+$parametros = array_filter([
+    'q' => $busqueda,
+    'institucion' => $institucion,
+    'modalidad' => $modalidad,
+    'sede' => $sede,
+    'page' => $pagina,
+    'page_size' => TAMANO_PAGINA,
+], fn($valor) => $valor !== '');
 
-$total_resultados = count($carreras);
+// El área aún no existe en los datos: se aproxima por el nombre de la carrera
+if ($area === 'diseno') {
+    $parametros['carrera'] = 'diseño';
+} elseif ($area === 'tecnologia') {
+    $parametros['excluir'] = 'diseño';
+}
+
+$respuesta = api_get('/api/v1/ofertas/?' . http_build_query($parametros));
+if ($respuesta === null && $pagina > 1) {
+    // Página fuera de rango: se vuelve a la primera
+    $pagina = 1;
+    $parametros['page'] = 1;
+    $respuesta = api_get('/api/v1/ofertas/?' . http_build_query($parametros));
+}
+if ($respuesta === null) {
+    $error_api = 'No se pudo cargar el catálogo. Inténtalo más tarde.';
+    $respuesta = ['count' => 0, 'results' => []];
+}
+
+$filtros = api_get('/api/v1/filtros/') ?? ['sedes' => []];
+
+$carreras = array_map('oferta_a_tarjeta', $respuesta['results']);
+$total_resultados = $respuesta['count'];
+$total_paginas = max(1, (int) ceil($total_resultados / TAMANO_PAGINA));
+
+function enlace_pagina(int $numero): string{
+    return 'carreras.php?' . http_build_query(array_merge($_GET, ['page' => $numero]));
+}
 ?>
 
 <!DOCTYPE html>
@@ -212,10 +178,9 @@ $total_resultados = count($carreras);
                         <label>Sede</label>
                         <select name="sede" onchange="this.form.submit()">
                             <option value="">Todas</option>
-                            <option value="san_joaquin" <?= $sede === 'san_joaquin' ? 'selected' : '' ?>>San Joaquín</option>
-                            <option value="la_granja" <?= $sede === 'la_granja' ? 'selected' : '' ?>>La Granja</option>
-                            <option value="santiago_centro" <?= $sede === 'santiago_centro' ? 'selected' : '' ?>>Santiago Centro</option>
-                            <option value="plaza_vespucio" <?= $sede === 'plaza_vespucio' ? 'selected' : '' ?>>Plaza Vespucio</option>
+                            <?php foreach ($filtros['sedes'] as $opcion): ?>
+                                <option value="<?= htmlspecialchars($opcion['clave']) ?>" <?= $sede === $opcion['clave'] ? 'selected' : '' ?>><?= htmlspecialchars($opcion['nombre']) ?></option>
+                            <?php endforeach; ?>
                         </select>
                     </div>
 
@@ -286,7 +251,7 @@ $total_resultados = count($carreras);
                             <div class="card-right-content">
                                 <div class="price-box">
                                     <strong><?= htmlspecialchars($carrera['arancel']) ?></strong>
-                                    <span>arancel anual aprox.</span>
+                                    <span><?= htmlspecialchars($carrera['arancel_periodo']) ?></span>
                                 </div>
                                 <a href="detalle.php?id=<?= $carrera['id'] ?>" class="btn-details">Ver detalles</a>
                             </div>
@@ -302,11 +267,15 @@ $total_resultados = count($carreras);
         
         </form>
 
+        <?php if ($total_paginas > 1): ?>
         <div class="pagination">
-            <a href="#" class="page-nav">&lt;</a>
-            <a href="#" class="page-num active">1</a>
-            <a href="#" class="page-nav">&gt;</a>
+            <a href="<?= $pagina > 1 ? htmlspecialchars(enlace_pagina($pagina - 1)) : '#' ?>" class="page-nav">&lt;</a>
+            <?php for ($numero = max(1, $pagina - 2); $numero <= min($total_paginas, $pagina + 2); $numero++): ?>
+                <a href="<?= htmlspecialchars(enlace_pagina($numero)) ?>" class="page-num <?= $numero === $pagina ? 'active' : '' ?>"><?= $numero ?></a>
+            <?php endfor; ?>
+            <a href="<?= $pagina < $total_paginas ? htmlspecialchars(enlace_pagina($pagina + 1)) : '#' ?>" class="page-nav">&gt;</a>
         </div>
+        <?php endif; ?>
 
     </main>
 

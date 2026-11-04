@@ -2,61 +2,8 @@
 //INICIAR LA SESIÓN
 session_start();
 
-// Base de datos local de carreras para mostrar los detalles de los elementos guardados
-$todas_las_carreras = [
-    1 => [
-        "id" => 1,
-        "nombre" => "Ingeniería en Informática",
-        "institucion" => "INACAP",
-        "logo_texto" => "inacap",
-        "logo_clase" => "square-logo",
-        "categoria" => "Tecnología",
-        "categoria_clase" => "badge-blue",
-        "ubicacion" => "La Granja",
-        "modalidad" => "Presencial",
-        "duracion" => "4 años",
-        "arancel" => "$2.350.000"
-    ],
-    2 => [
-        "id" => 2,
-        "nombre" => "Analista Programador",
-        "institucion" => "Duoc UC",
-        "logo_texto" => "DuocUC",
-        "logo_clase" => "duoc-logo",
-        "categoria" => "Tecnología",
-        "categoria_clase" => "badge-blue",
-        "ubicacion" => "San Joaquín",
-        "modalidad" => "Presencial",
-        "duracion" => "2 años",
-        "arancel" => "$1.750.000"
-    ],
-    3 => [
-        "id" => 3,
-        "nombre" => "Ingeniería en Telecomunicaciones",
-        "institucion" => "INACAP",
-        "logo_texto" => "inacap",
-        "logo_clase" => "square-logo",
-        "categoria" => "Tecnología",
-        "categoria_clase" => "badge-blue",
-        "ubicacion" => "Santiago Centro",
-        "modalidad" => "Presencial",
-        "duracion" => "4 años",
-        "arancel" => "$2.200.000"
-    ],
-    4 => [
-        "id" => 4,
-        "nombre" => "Diseño Gráfico Digital",
-        "institucion" => "Duoc UC",
-        "logo_texto" => "DuocUC",
-        "logo_clase" => "duoc-logo",
-        "categoria" => "Diseño",
-        "categoria_clase" => "badge-pink",
-        "ubicacion" => "Plaza Vespucio",
-        "modalidad" => "Presencial",
-        "duracion" => "4 años",
-        "arancel" => "$2.100.000"
-    ]
-];
+require_once 'api.php';
+require_once 'catalogo.php';
 
 // Lógica para quitar una carrera de guardados mediante PHP al presionar el corazón rojo
 if (isset($_GET['remover'])) {
@@ -76,9 +23,12 @@ if (isset($_GET['remover'])) {
 $ids_guardados = $_SESSION['favoritos'] ?? [];
 $carreras_guardadas = [];
 
-foreach ($ids_guardados as $id) {
-    if (isset($todas_las_carreras[$id])) {
-        $carreras_guardadas[] = $todas_las_carreras[$id];
+// Se piden a Django solo las ofertas guardadas, por su ID real
+if (!empty($ids_guardados)) {
+    $ids = implode(',', array_map('intval', $ids_guardados));
+    $respuesta = api_get('/api/v1/ofertas/?' . http_build_query(['ids' => $ids, 'page_size' => 100]));
+    foreach ($respuesta['results'] ?? [] as $row) {
+        $carreras_guardadas[] = oferta_a_tarjeta($row);
     }
 }
 ?>
@@ -177,7 +127,7 @@ foreach ($ids_guardados as $id) {
                         <div class="card-right-content">
                             <div class="price-box">
                                 <strong><?= htmlspecialchars($carrera['arancel']) ?></strong>
-                                <span>arancel anual aprox.</span>
+                                <span><?= htmlspecialchars($carrera['arancel_periodo']) ?></span>
                             </div>
                             <a href="detalle.php?id=<?= $carrera['id'] ?>" class="btn-details">Ver detalles</a>
                         </div>
