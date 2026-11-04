@@ -166,7 +166,7 @@ a {
 }
 
 /* ==========================================
-   3. MENÚ DESPLEGABLE NATIVO DE USUARIO (<details>)
+   3. MENÚ DESPLEGABLE DE USUARIO (<details>)
 ========================================== */
 .user-menu-container {
     position: relative;
@@ -188,23 +188,6 @@ a {
     padding: 2px;
 }
 
-/* Avatar de usuario basado en texto (iniciales) */
-.user-avatar {
-    width: 38px;
-    height: 38px;
-    border-radius: 50%;
-    border: none;
-    background-color: var(--brand-purple);
-    color: var(--white);
-    font-weight: 600;
-    font-size: 14px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background-color 0.2s ease;
-}
-
-/* Avatar de usuario basado en Imagen (Gato) */
 .user-avatar-img {
     width: 38px;
     height: 38px;
@@ -213,10 +196,6 @@ a {
     border: 2px solid var(--brand-purple);
     display: block;
     transition: transform 0.2s ease, border-color 0.2s ease;
-}
-
-.user-menu-btn:hover .user-avatar {
-    background-color: var(--brand-purple-hover);
 }
 
 .user-menu-btn:hover .user-avatar-img {
@@ -511,4 +490,134 @@ a {
 
 .footer p + p {
     margin-top: 4px;
+}
+
+/* ==========================================
+   7. ESTILOS DEL ASISTENTE DE IA FLOTANTE
+========================================== */
+#ai-assistant-wrapper {
+    position: fixed;
+    bottom: 25px;
+    right: 25px;
+    z-index: 999;
+}
+
+#ai-assistant-wrapper summary::-webkit-details-marker {
+    display: none;
+}
+
+#ai-toggle-btn {
+    background-color: var(--brand-purple);
+    color: white;
+    border: none;
+    padding: 12px 20px;
+    border-radius: 30px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 4px 14px rgba(106, 13, 173, 0.35);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    list-style: none;
+    transition: all 0.3s ease;
+}
+
+#ai-toggle-btn:hover {
+    background-color: var(--brand-purple-hover);
+}
+
+.ai-chat-box {
+    position: absolute;
+    bottom: 55px;
+    right: 0;
+    width: 340px;
+    height: 420px;
+    background: var(--white);
+    border-radius: 16px;
+    border: 1px solid var(--border-color);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.ai-chat-header {
+    background-color: var(--brand-purple);
+    color: white;
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.ai-header-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.ai-header-title strong {
+    display: block;
+    font-size: 14px;
+}
+
+.ai-header-title span {
+    font-size: 11px;
+    opacity: 0.85;
+}
+
+.ai-chat-body {
+    flex: 1;
+    padding: 16px;
+    overflow-y: auto;
+    background: #f8fafc;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.ai-message {
+    max-width: 82%;
+    padding: 10px 14px;
+    border-radius: 12px;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.ai-message.bot {
+    background: var(--white);
+    color: #1e293b;
+    border: 1px solid #e2e8f0;
+    align-self: flex-start;
+}
+
+.ai-chat-footer {
+    padding: 12px;
+    background: var(--white);
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    gap: 8px;
+}
+
+.ai-chat-footer input {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    outline: none;
+    font-size: 13px;
+}
+
+.ai-chat-footer input:focus {
+    border-color: var(--brand-purple);
+}
+
+.ai-chat-footer button {
+    background: var(--brand-purple);
+    color: white;
+    border: none;
+    padding: 0 14px;
+    border-radius: 8px;
+    cursor: pointer;
 }

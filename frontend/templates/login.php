@@ -2,6 +2,9 @@
 session_start();
 $error = "";
 
+// Inicializar la variable de correo como vacía al entrar a la página
+$correo = "";
+
 // Si ya inició sesión, redirigir al index
 if (isset($_SESSION['usuario'])) {
     header("Location: index.php");
@@ -89,12 +92,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     </div>
                 <?php endif; ?>
 
-                <form action="login.php" method="POST">
+                <!-- Formulario con autocomplete deshabilitado -->
+                <form action="login.php" method="POST" autocomplete="off">
                     <div class="form-group">
                         <label for="correo">Correo electrónico</label>
                         <div class="input-with-icon">
                             <span class="input-icon">✉️</span>
-                            <input type="email" id="correo" name="correo" placeholder="Ingresa tu correo electrónico" value="<?= htmlspecialchars($correo ?? '') ?>" required>
+                            <input type="email" id="correo" name="correo" placeholder="Ingresa tu correo electrónico" value="<?= htmlspecialchars($correo) ?>" autocomplete="off" required>
                         </div>
                     </div>
 
@@ -102,7 +106,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         <label for="password">Contraseña</label>
                         <div class="input-with-icon">
                             <span class="input-icon">🔒</span>
-                            <input type="password" id="password" name="password" placeholder="Ingresa tu contraseña" required>
+                            <input type="password" id="password" name="password" placeholder="Ingresa tu contraseña" autocomplete="new-password" required>
                             <span class="toggle-password">👁️</span>
                         </div>
                     </div>

@@ -1,19 +1,21 @@
 <?php
 // ==========================================
-// DATOS DE LAS FUNCIONALIDADES
+// INICIAR SESIÓN Y DATOS DE LA PÁGINA
 // ==========================================
+session_start();
+
 $funciones = [
     [
         "icono" => "🔍",
         "titulo" => "Explora carreras",
         "descripcion" => "Encuentra carreras de diferentes instituciones en un solo lugar.",
-        "enlace" => "/templates/carreras.php"
+        "enlace" => "carreras.php"
     ],
     [
         "icono" => "⚖️",
         "titulo" => "Compara opciones",
         "descripcion" => "Compara carreras y revisa sus principales características.",
-        "enlace" => "/templates/comparar.php"
+        "enlace" => "comparar.php"
     ],
     [
         "icono" => "🧠",
@@ -24,8 +26,8 @@ $funciones = [
 ];
 
 $busqueda = "";
-if (isset($_GET["buscar"])) {
-    $busqueda = trim($_GET["buscar"]);
+if (isset($_GET["q"])) {
+    $busqueda = trim($_GET["q"]);
 }
 ?>
 
@@ -34,15 +36,12 @@ if (isset($_GET["buscar"])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mi Ayudante</title>
-    <!-- CSS -->
+    <title>Mi Ayudante - Inicio</title>
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body class="app-body">
 
-    <!-- ==========================================
-         BARRA DE NAVEGACIÓN SUPERIOR
-    ========================================== -->
+    <!-- BARRA DE NAVEGACIÓN SUPERIOR -->
     <nav class="navbar">
         <div class="nav-brand">
             <span class="nav-logo-icon">🎓</span>
@@ -53,19 +52,16 @@ if (isset($_GET["buscar"])) {
         </div>
         <ul class="nav-links">
             <li><a href="index.php" class="active">Inicio</a></li>
-            <li><a href="/templates/carreras.php">Explorar carreras</a></li>
-            <li><a href="/templates/comparar.php">Comparar</a></li>
+            <li><a href="carreras.php">Explorar carreras</a></li>
+            <li><a href="comparar.php">Comparar</a></li>
             <li><a href="pages/test.php">Test vocacional</a></li>
         </ul>
         
         <!-- ACCIONES DE LA NAVBAR -->
         <div class="nav-actions">
-            <a href="/templates/guardados.php" class="btn-action-saved" title="Guardados">
+            <a href="guardados.php" class="btn-action-saved" title="Guardados">
                 <span>❤️</span> Guardados
             </a>
-            <button class="btn-icon" title="Notificaciones">
-                🔔
-            </button>
             
             <!-- MENÚ DESPLEGABLE DE USUARIO CON AVATAR DE GATO -->
             <details class="user-menu-container">
@@ -83,9 +79,7 @@ if (isset($_GET["buscar"])) {
         </div>
     </nav>
 
-    <!-- ==========================================
-         CONTENIDO PRINCIPAL
-    ========================================== -->
+    <!-- CONTENIDO PRINCIPAL -->
     <main class="main-container">
 
         <!-- PORTADA -->
@@ -97,15 +91,13 @@ if (isset($_GET["buscar"])) {
                 
                 <p>Compara carreras, descubre tus intereses y encuentra información para tomar la mejor decisión sobre tu futuro.</p>
 
-                <!-- BUSCADOR -->
-                <form class="search-box" method="GET" action="index.php">
-                    <input type="text" name="buscar" placeholder="¿Qué carrera estás buscando?" value="<?= htmlspecialchars($busqueda) ?>">
-                    <button type="submit">🔍</button>
+                <form class="search-box" method="GET" action="carreras.php">
+                    <input type="text" name="q" placeholder="¿Qué carrera estás buscando?" value="<?= htmlspecialchars($busqueda) ?>" required>
+                    <button type="submit" style="background:none; border:none; cursor:pointer;">🔍</button>
                 </form>
 
-                <!-- BOTONES -->
                 <div class="portada-buttons">
-                    <a href="/templates/carreras.php" class="btn btn-primary">Explorar carreras</a>
+                    <a href="carreras.php" class="btn btn-primary">Explorar carreras</a>
                     <a href="pages/test.php" class="btn btn-secondary">Hacer test vocacional</a>
                 </div>
             </div>
@@ -119,9 +111,7 @@ if (isset($_GET["buscar"])) {
         <section class="features" id="funciones">
             <?php foreach ($funciones as $funcion): ?>
                 <article class="feature-card">
-                    <div class="feature-icon">
-                        <?= $funcion["icono"] ?>
-                    </div>
+                    <div class="feature-icon"><?= $funcion["icono"] ?></div>
                     <h2><?= $funcion["titulo"] ?></h2>
                     <p><?= $funcion["descripcion"] ?></p>
                     <a href="<?= $funcion["enlace"] ?>">Ver más →</a>
@@ -140,13 +130,41 @@ if (isset($_GET["buscar"])) {
 
     </main>
 
-    <!-- ==========================================
-         FOOTER
-    ========================================== -->
+    <!-- FOOTER -->
     <footer class="footer">
         <p>© <?= date("Y") ?> Mi Ayudante</p>
         <p>Plataforma de orientación para estudiantes</p>
     </footer>
+
+    <!-- ASISTENTE DE IA FLOTANTE LATERAL (NATIVO CON <details>) -->
+    <details id="ai-assistant-wrapper">
+        <summary id="ai-toggle-btn">
+            <span>🤖</span> Asistente IA
+        </summary>
+        
+        <div class="ai-chat-box">
+            <div class="ai-chat-header">
+                <div class="ai-header-title">
+                    <span>🤖</span>
+                    <div>
+                        <strong>Asistente Virtual IA</strong>
+                        <span>Orientación vocacional</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="ai-chat-body">
+                <div class="ai-message bot">
+                    ¡Hola! Soy tu asistente de IA. ¿Tienes dudas sobre alguna carrera, arancel o institución?
+                </div>
+            </div>
+
+            <div class="ai-chat-footer">
+                <input type="text" placeholder="Escribe tu duda aquí...">
+                <button type="button">➤</button>
+            </div>
+        </div>
+    </details>
 
 </body>
 </html>
