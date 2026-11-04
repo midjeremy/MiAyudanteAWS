@@ -38,6 +38,7 @@ if (isset($_GET["q"])) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mi Ayudante - Inicio</title>
     <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/responsive.css">
 </head>
 <body class="app-body">
 

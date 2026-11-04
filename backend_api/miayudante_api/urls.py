@@ -22,4 +22,5 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/v1/catalogo/', views.api_catalogo_inacap, name='api_catalogo'),
     path('', include('chatbot.urls')),
+    path('', include('usuarios.urls')),
 ]

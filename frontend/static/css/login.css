@@ -1,5 +1,6 @@
 
 .login-body {
+    font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     background-color: #f4f5f9;
     min-height: 100vh;
     display: flex;

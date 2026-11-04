@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
 import os
+from datetime import timedelta
 from pathlib import Path
 from dotenv import load_dotenv
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -44,6 +45,7 @@ INSTALLED_APPS = [
     'storages',
     'scraper',
     'chatbot',
+    'usuarios',
 ]
 
 MIDDLEWARE = [
@@ -74,6 +76,23 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'miayudante_api.wsgi.application'
+
+# API: autenticación con JWT (RF-12) y límite de intentos en login y registro
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'auth': '20/min',
+    },
+    # Nginx o PHP envían la IP real del visitante en X-Forwarded-For
+    'NUM_PROXIES': 1,
+}
+
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(hours=1),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+}
 
 
 # Database
@@ -113,7 +132,7 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/6.1/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = 'es'
 
 TIME_ZONE = 'UTC'
 
