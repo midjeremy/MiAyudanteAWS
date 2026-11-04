@@ -1,104 +1,69 @@
 <?php
-// 1. INICIAR LA SESIÓN
+//INICIAR LA SESIÓN Y CARGAR EL BFF (api.php)
 session_start();
+require_once 'api.php';
 
-$todas_las_carreras = [
-    [
-        'id' => 1,
-        'institucion' => 'INACAP',
-        'nombre' => 'Ingeniería en Informática',
-        'sede_nombre' => 'La Granja',
-        'sede_ubicacion' => 'Santiago, RM',
-        'tema_color' => 'card-purple',   
-        'badge_color' => 'badge-purple', 
-        'logo_text' => '■',
-        'logo_class' => 'square-logo',
-        'arancel' => 2350000,
-        'duracion_anos' => 4,
-        'duracion_semestres' => 8,
-        'titulo' => 'Ingeniero en Informática',
-        'tipo_titulo' => 'Título profesional',
-        'modalidad' => 'Presencial',
-        'jornada' => 'Diurno',
-        'campo_laboral' => 'Desarrollo de software, gestión de proyectos TI, bases de datos y arquitectura de sistemas.',
-        'link_malla' => '#'
-    ],
-    [
-        'id' => 2,
-        'institucion' => 'Duoc UC',
-        'nombre' => 'Analista Programador',
-        'sede_nombre' => 'San Joaquín',
-        'sede_ubicacion' => 'Santiago, RM',
-        'tema_color' => 'card-teal',
-        'badge_color' => 'badge-teal',
-        'logo_text' => 'DuocUC',
-        'logo_class' => 'duoc-logo',
-        'arancel' => 1750000,
-        'duracion_anos' => 2,
-        'duracion_semestres' => 4,
-        'titulo' => 'Analista Programador',
-        'tipo_titulo' => 'Título técnico',
-        'modalidad' => 'Presencial',
-        'jornada' => 'Diurno y Vespertino',
-        'campo_laboral' => 'Desarrollo web, creación de aplicaciones móviles, soporte de software y bases de datos.',
-        'link_malla' => '#'
-    ],
-    [
-        'id' => 3,
-        'institucion' => 'INACAP',
-        'nombre' => 'Ingeniería en Telecomunicaciones',
-        'sede_nombre' => 'Santiago Centro',
-        'sede_ubicacion' => 'Santiago, RM',
-        'tema_color' => 'card-blue',
-        'badge_color' => 'badge-blue',
-        'logo_text' => '■',
-        'logo_class' => 'square-logo',
-        'arancel' => 2200000,
-        'duracion_anos' => 4,
-        'duracion_semestres' => 8,
-        'titulo' => 'Ingeniero en Telecomunicaciones',
-        'tipo_titulo' => 'Título profesional',
-        'modalidad' => 'Presencial',
-        'jornada' => 'Diurno',
-        'campo_laboral' => 'Redes empresariales, ciberseguridad, administración de servidores y fibra óptica.',
-        'link_malla' => '#'
-    ],
-    [
-        'id' => 4,
-        'institucion' => 'Duoc UC',
-        'nombre' => 'Diseño Gráfico Digital',
-        'sede_nombre' => 'Plaza Vespucio',
-        'sede_ubicacion' => 'Santiago, RM',
-        'tema_color' => 'card-pink',
-        'badge_color' => 'badge-pink',
-        'logo_text' => 'DuocUC',
-        'logo_class' => 'duoc-logo',
-        'arancel' => 2100000,
-        'duracion_anos' => 4,
-        'duracion_semestres' => 8,
-        'titulo' => 'Diseñador Gráfico',
-        'tipo_titulo' => 'Título profesional',
-        'modalidad' => 'Presencial',
-        'jornada' => 'Diurno',
-        'campo_laboral' => 'Agencias de publicidad, branding, diseño UX/UI, y producción editorial.',
-        'link_malla' => '#'
-    ]
-];
+//OBTENER EL CATÁLOGO COMPLETO DESDE DJANGO MEDIANTE cURL
+$catalogo_api = api_get('/api/v1/catalogo/'); 
 
-// 2. LEER LOS IDs QUE VIENEN DE LA PÁGINA ANTERIOR
+$todas_las_carreras = [];
+
+if (is_array($catalogo_api)) {
+    $contador = 1;
+    foreach ($catalogo_api as $row) {
+        // Asignar ID coincidente con la lista en carreras.php
+        $id_carrera = $row['id'] ?? $contador;
+
+        $institucion = $row['institucion'] ?? 'INACAP';
+        $inst_clave = (stripos($institucion, 'duoc') !== false) ? 'duoc' : 'inacap';
+        $logo_texto = ($inst_clave === 'duoc') ? 'DuocUC' : '■';
+        $logo_clase = ($inst_clave === 'duoc') ? 'duoc-logo' : 'square-logo';
+
+        $semestres = intval($row['duracion_semestres'] ?? 8);
+        $anos = round($semestres / 2, 1);
+
+        $arancel_raw = $row['valor_anual'] ?? 0;
+        $arancel_num = is_numeric($arancel_raw) ? intval($arancel_raw) : 0;
+
+        // Indexar por el ID de la carrera
+        $todas_las_carreras[$id_carrera] = [
+            'id' => $id_carrera,
+            'institucion' => $institucion,
+            'nombre' => $row['carrera'] ?? '',
+            'sede_nombre' => $row['sede'] ?? '',
+            'sede_ubicacion' => $row['region'] ?? 'Santiago, RM',
+            'tema_color' => ($inst_clave === 'duoc') ? 'card-teal' : 'card-purple',   
+            'badge_color' => ($inst_clave === 'duoc') ? 'badge-teal' : 'badge-purple', 
+            'logo_text' => $logo_texto,
+            'logo_class' => $logo_clase,
+            'arancel' => $arancel_num,
+            'duracion_anos' => $anos,
+            'duracion_semestres' => $semestres,
+            'titulo' => $row['titulo'] ?? '',
+            'tipo_titulo' => $row['nivel'] ?? 'Título profesional',
+            'modalidad' => $row['modalidad'] ?? 'Presencial',
+            'jornada' => $row['jornada'] ?? 'Diurno',
+            'link_malla' => $row['malla_url'] ?? '#'
+        ];
+
+        $contador++;
+    }
+}
+
+//LEER LOS IDs QUE SELECCIONÓ EL USUARIO EN CARRERAS.PHP
 $ids_seleccionados = isset($_GET['ids']) ? $_GET['ids'] : [];
 
-// 3. BUSCAR LAS CARRERAS QUE COINCIDAN CON LOS IDs
+//BUSCAR LAS CARRERAS QUE COINCIDAN CON LOS IDs SELECCIONADOS
 $carreras_seleccionadas = [];
 if (!empty($ids_seleccionados)) {
-    foreach ($todas_las_carreras as $carrera) {
-        if (in_array($carrera['id'], $ids_seleccionados)) {
-            $carreras_seleccionadas[] = $carrera;
+    foreach ($ids_seleccionados as $id_sel) {
+        if (isset($todas_las_carreras[$id_sel])) {
+            $carreras_seleccionadas[] = $todas_las_carreras[$id_sel];
         }
     }
 }
 
-// 4. ASIGNAR LAS COLUMNAS (Máximo 2)
+//ASIGNAR LAS COLUMNAS (Máximo 2)
 $carrera1 = $carreras_seleccionadas[0] ?? null;
 $carrera2 = $carreras_seleccionadas[1] ?? null;
 ?>
@@ -125,14 +90,15 @@ $carrera2 = $carreras_seleccionadas[1] ?? null;
             <li><a href="index.php">Inicio</a></li>
             <li><a href="carreras.php">Explorar carreras</a></li>
             <li><a href="comparar.php" class="active">Comparar</a></li>
-            <li><a href="test.php">Test vocacional</a></li>
-            <li><a href="ia.php">Asistente IA</a></li>
+            <li><a href="pages/test.php">Test vocacional</a></li>
         </ul>
         <div class="nav-actions">
-            <button class="btn-icon">❤️ Guardados</button>
-            <button class="btn-icon">🔔</button>
+            <!-- Botón Guardados -->
+            <a href="guardados.php" class="btn-action-saved" title="Guardados">
+                <span>❤️</span> Guardados
+            </a>
             
-            <!-- MENÚ DESPLEGABLE DE USUARIO (CON AVATAR DE GATO) -->
+            <!-- MENÚ DESPLEGABLE DE USUARIO -->
             <details class="user-menu-container">
                 <summary class="user-menu-btn" title="Perfil">
                     <img src="/static/img/gato-avatar.png" alt="Perfil" class="user-avatar-img">
@@ -169,14 +135,14 @@ $carrera2 = $carreras_seleccionadas[1] ?? null;
                     <h3>Mis comparaciones</h3>
                     <p class="subtitle">Puedes seleccionar hasta 2 carreras para compararlas.</p>
 
-                    <!-- BUCLE PHP: Genera automáticamente la lista en la barra lateral -->
+                    <!-- BUCLE PHP: Lista en la barra lateral -->
                     <?php 
-                    $contador = 1;
+                    $contador_sidebar = 1;
                     if(count($carreras_seleccionadas) > 0):
                         foreach (array_slice($carreras_seleccionadas, 0, 2) as $carrera_sidebar): 
                     ?>
                         <div class="selected-career">
-                            <div class="career-number <?= $carrera_sidebar['badge_color'] ?>"><?= $contador ?></div>
+                            <div class="career-number <?= $carrera_sidebar['badge_color'] ?>"><?= $contador_sidebar ?></div>
                             <div class="career-info">
                                 <strong><?= htmlspecialchars($carrera_sidebar['nombre']) ?></strong>
                                 <span><?= htmlspecialchars($carrera_sidebar['institucion']) ?></span>
@@ -184,7 +150,7 @@ $carrera2 = $carreras_seleccionadas[1] ?? null;
                             <button class="btn-remove" title="Quitar">✖</button>
                         </div>
                     <?php 
-                        $contador++;
+                        $contador_sidebar++;
                         endforeach; 
                     else:
                     ?>
@@ -216,7 +182,7 @@ $carrera2 = $carreras_seleccionadas[1] ?? null;
             <!--ÁREA DE COMPARACIÓN-->
             <section class="comparison-content">
                 
-                <?php if($carrera1 && $carrera2): // Requiere exactamente 2 carreras para comparar bien ?>
+                <?php if($carrera1 && $carrera2): ?>
                 
                 <!-- Encabezados de las carreras-->
                 <div class="comparison-headers">
@@ -226,7 +192,7 @@ $carrera2 = $carreras_seleccionadas[1] ?? null;
                             <div class="inst-logo <?= $carrera1['logo_class'] ?>"><?= $carrera1['logo_text'] ?></div>
                             <span class="heart-icon">♡</span>
                         </div>
-                        <span class="inst-name"><?= $carrera1['institucion'] ?></span>
+                        <span class="inst-name"><?= htmlspecialchars($carrera1['institucion']) ?></span>
                         <h2><?= htmlspecialchars($carrera1['nombre']) ?></h2>
                         <p>Sede <?= htmlspecialchars($carrera1['sede_nombre']) ?></p>
                     </div>
@@ -240,7 +206,7 @@ $carrera2 = $carreras_seleccionadas[1] ?? null;
                             <div class="inst-logo <?= $carrera2['logo_class'] ?>"><?= $carrera2['logo_text'] ?></div>
                             <span class="heart-icon">♡</span>
                         </div>
-                        <span class="inst-name"><?= $carrera2['institucion'] ?></span>
+                        <span class="inst-name"><?= htmlspecialchars($carrera2['institucion']) ?></span>
                         <h2><?= htmlspecialchars($carrera2['nombre']) ?></h2>
                         <p>Sede <?= htmlspecialchars($carrera2['sede_nombre']) ?></p>
                     </div>
@@ -268,12 +234,12 @@ $carrera2 = $carreras_seleccionadas[1] ?? null;
                         </div>
                     </div>
 
-                    <!--Duracion-->
+                    <!--Duración-->
                     <div class="compare-row">
                         <div class="feature-label">
                             <span class="icon">⏱</span>
                             <div>
-                                <strong>Duracion</strong>
+                                <strong>Duración</strong>
                                 <span>Tiempo de estudio</span>
                             </div>
                         </div>
@@ -287,12 +253,12 @@ $carrera2 = $carreras_seleccionadas[1] ?? null;
                         </div>
                     </div>
 
-                    <!--titulo-->
+                    <!--Título-->
                     <div class="compare-row">
                         <div class="feature-label">
                             <span class="icon">📜</span>
                             <div>
-                                <strong>Titulo</strong>
+                                <strong>Título</strong>
                                 <span>Grado otorgado</span>
                             </div>
                         </div>
@@ -306,7 +272,7 @@ $carrera2 = $carreras_seleccionadas[1] ?? null;
                         </div>
                     </div>
 
-                    <!--modalidad-->
+                    <!--Modalidad-->
                     <div class="compare-row">
                         <div class="feature-label">
                             <span class="icon">📖</span>
@@ -325,13 +291,13 @@ $carrera2 = $carreras_seleccionadas[1] ?? null;
                         </div>
                     </div>
 
-                    <!--sede-->
+                    <!--Sede-->
                     <div class="compare-row">
                         <div class="feature-label">
                             <span class="icon">📍</span>
                             <div>
                                 <strong>Sede</strong>
-                                <span>Ubicacion</span>
+                                <span>Ubicación</span>
                             </div>
                         </div>
                         <div class="feature-value">
@@ -344,24 +310,7 @@ $carrera2 = $carreras_seleccionadas[1] ?? null;
                         </div>
                     </div>
 
-                    <!--campo laboral-->
-                    <div class="compare-row">
-                        <div class="feature-label">
-                            <span class="icon">📈</span>
-                            <div>
-                                <strong>Campo laboral</strong>
-                                <span>Area de desempeño</span>
-                            </div>
-                        </div>
-                        <div class="feature-value">
-                            <span class="text-desc"><?= htmlspecialchars($carrera1['campo_laboral']) ?></span>
-                        </div>
-                        <div class="feature-value">
-                            <span class="text-desc"><?= htmlspecialchars($carrera2['campo_laboral']) ?></span>
-                        </div>
-                    </div>
-
-                    <!--malla-->
+                    <!--Malla-->
                     <div class="compre-row border-none">
                         <div class="feature-label">
                             <span class="icon">🎓</span>
@@ -379,7 +328,7 @@ $carrera2 = $carreras_seleccionadas[1] ?? null;
                     </div>
                 </div>
 
-                <!--botones inferiores-->
+                <!--Botones inferiores-->
                 <div class="bottom-actions">
                     <button class="btn-outline" onclick="window.location.href='carreras.php'">← Volver a resultados</button>
                     <button class="btn-primary">⭐ Ver recomendaciones</button>
@@ -397,5 +346,36 @@ $carrera2 = $carreras_seleccionadas[1] ?? null;
             </section>
         </div>
     </main>
+
+    <!-- ASISTENTE DE IA FLOTANTE LATERAL -->
+    <details id="ai-assistant-wrapper">
+        <summary id="ai-toggle-btn">
+            <span>🤖</span> Asistente IA
+        </summary>
+        
+        <div class="ai-chat-box">
+            <div class="ai-chat-header">
+                <div class="ai-header-title">
+                    <span>🤖</span>
+                    <div>
+                        <strong>Asistente Virtual IA</strong>
+                        <span>Orientación vocacional</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="ai-chat-body">
+                <div class="ai-message bot">
+                    ¡Hola! Veo que estás comparando carreras. ¿Te ayudo a analizar cuál se adapta mejor a tu presupuesto o jornada?
+                </div>
+            </div>
+
+            <div class="ai-chat-footer">
+                <input type="text" placeholder="Escribe tu duda aquí...">
+                <button type="button">➤</button>
+            </div>
+        </div>
+    </details>
+
 </body>
 </html>

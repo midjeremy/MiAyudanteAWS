@@ -1,121 +1,107 @@
 <?php
-// 1. INICIAR LA SESIÓN
+//INICIAR LA SESIÓN Y CARGAR LA API BFF
 session_start();
+require_once 'api.php';
 
-$todas_las_carreras = [
-    [
-        "id" => 1,
-        "nombre" => "Ingeniería en Informática",
-        "institucion" => "INACAP",
-        "inst_clave" => "inacap",
-        "logo_texto" => "inacap",
-        "logo_clase" => "square-logo",
-        "categoria" => "Tecnología",
-        "area_clave" => "tecnologia",
-        "categoria_clase" => "badge-blue",
-        "ubicacion" => "La Granja",
-        "sede_clave" => "la_granja",
-        "modalidad" => "Presencial",
-        "modalidad_clave" => "presencial",
-        "duracion" => "4 años",
-        "arancel" => "$2.350.000",
-        "favorito" => false
-    ],
-    [
-        "id" => 2,
-        "nombre" => "Analista Programador",
-        "institucion" => "Duoc UC",
-        "inst_clave" => "duoc",
-        "logo_texto" => "DuocUC",
-        "logo_clase" => "duoc-logo",
-        "categoria" => "Tecnología",
-        "area_clave" => "tecnologia",
-        "categoria_clase" => "badge-blue",
-        "ubicacion" => "San Joaquín",
-        "sede_clave" => "san_joaquin",
-        "modalidad" => "Presencial",
-        "modalidad_clave" => "presencial",
-        "duracion" => "2 años",
-        "arancel" => "$1.750.000",
-        "favorito" => false
-    ],
-    [
-        "id" => 3,
-        "nombre" => "Ingeniería en Telecomunicaciones",
-        "institucion" => "INACAP",
-        "inst_clave" => "inacap",
-        "logo_texto" => "inacap",
-        "logo_clase" => "square-logo",
-        "categoria" => "Tecnología",
-        "area_clave" => "tecnologia",
-        "categoria_clase" => "badge-blue",
-        "ubicacion" => "Santiago Centro",
-        "sede_clave" => "santiago_centro",
-        "modalidad" => "Presencial",
-        "modalidad_clave" => "presencial",
-        "duracion" => "4 años",
-        "arancel" => "$2.200.000",
-        "favorito" => false
-    ],
-    [
-        "id" => 4,
-        "nombre" => "Diseño Gráfico Digital",
-        "institucion" => "Duoc UC",
-        "inst_clave" => "duoc",
-        "logo_texto" => "DuocUC",
-        "logo_clase" => "duoc-logo",
-        "categoria" => "Diseño",
-        "area_clave" => "diseno",
-        "categoria_clase" => "badge-pink",
-        "ubicacion" => "Plaza Vespucio",
-        "sede_clave" => "plaza_vespucio",
-        "modalidad" => "Presencial",
-        "modalidad_clave" => "presencial",
-        "duracion" => "4 años",
-        "arancel" => "$2.100.000",
-        "favorito" => false
-    ]
-];
+if (!isset($_SESSION['favoritos'])) {
+    $_SESSION['favoritos'] = [];
+}
 
+// Lógica de favoritos
+if (isset($_GET['toggle_fav'])) {
+    $id_fav = intval($_GET['toggle_fav']);
+    $index = array_search($id_fav, $_SESSION['favoritos']);
+    
+    if ($index !== false) {
+        unset($_SESSION['favoritos'][$index]);
+        $_SESSION['favoritos'] = array_values($_SESSION['favoritos']);
+    } else {
+        $_SESSION['favoritos'][] = $id_fav;
+    }
+    
+    $params = $_GET;
+    unset($params['toggle_fav']);
+    $url_limpia = 'carreras.php' . (!empty($params) ? '?' . http_build_query($params) : '');
+    header("Location: " . $url_limpia);
+    exit;
+}
+
+//CONSUMIR EL CATÁLOGO DESDE DJANGO MEDIANTE cURL (BFF)
+$catalogo = api_get('/api/v1/catalogo/');
+if ($catalogo === null) {
+    $error_api = 'No se pudo cargar el catálogo. Inténtalo más tarde.';
+    $catalogo = [];
+}
+
+$todas_las_carreras = [];
+
+if (is_array($catalogo)) {
+    $contador = 1;
+    foreach ($catalogo as $row) {
+        $institucion = $row['institucion'] ?? 'INACAP';
+        $inst_clave = (stripos($institucion, 'duoc') !== false) ? 'duoc' : 'inacap';
+        $logo_texto = ($inst_clave === 'duoc') ? 'DuocUC' : 'inacap';
+        $logo_clase = ($inst_clave === 'duoc') ? 'duoc-logo' : 'square-logo';
+        
+        $nombre_carrera = $row['carrera'] ?? '';
+        $area_clave = (stripos($nombre_carrera, 'diseño') !== false) ? 'diseno' : 'tecnologia';
+        $categoria = ($area_clave === 'diseno') ? 'Diseño' : 'Tecnología';
+        $categoria_clase = ($area_clave === 'diseno') ? 'badge-pink' : 'badge-blue';
+
+        $sede = $row['sede'] ?? 'Santiago';
+        $sede_clave = strtolower(str_replace([' ', 'á', 'é', 'í', 'ó', 'ú'], ['_', 'a', 'e', 'i', 'o', 'u'], $sede));
+
+        $modalidad = $row['modalidad'] ?? 'Presencial';
+        $modalidad_clave = strtolower($modalidad);
+
+        $semestres = intval($row['duracion_semestres'] ?? 8);
+        $anos = round($semestres / 2, 1);
+        $duracion = $anos . ' años';
+
+        $arancel_val = $row['valor_anual'] ?? '0';
+        $arancel_formateado = is_numeric($arancel_val) ? '$' . number_format(intval($arancel_val), 0, ',', '.') : '$' . $arancel_val;
+
+        $todas_las_carreras[] = [
+            "id" => $row['id'] ?? $contador,
+            "nombre" => $nombre_carrera,
+            "institucion" => $institucion,
+            "inst_clave" => $inst_clave,
+            "logo_texto" => $logo_texto,
+            "logo_clase" => $logo_clase,
+            "categoria" => $categoria,
+            "area_clave" => $area_clave,
+            "categoria_clase" => $categoria_clase,
+            "ubicacion" => $sede,
+            "sede_clave" => $sede_clave,
+            "modalidad" => $modalidad,
+            "modalidad_clave" => $modalidad_clave,
+            "duracion" => $duracion,
+            "arancel" => $arancel_formateado
+        ];
+        $contador++;
+    }
+}
+
+//FILTROS DE BÚSQUEDA
 $busqueda     = isset($_GET['q']) ? trim($_GET['q']) : '';
 $area         = isset($_GET['area']) ? $_GET['area'] : '';
-$institucion = isset($_GET['institucion']) ? $_GET['institucion'] : '';
-$modalidad   = isset($_GET['modalidad']) ? $_GET['modalidad'] : '';
+$institucion  = isset($_GET['institucion']) ? $_GET['institucion'] : '';
+$modalidad    = isset($_GET['modalidad']) ? $_GET['modalidad'] : '';
 $sede         = isset($_GET['sede']) ? $_GET['sede'] : '';
 
 $carreras = array_filter($todas_las_carreras, function ($carrera) use ($busqueda, $area, $institucion, $modalidad, $sede) {
-    
-    // Filtrar por texto ingresado (Nombre o Institución)
     if ($busqueda !== '') {
         $texto     = mb_strtolower($busqueda);
         $nombre    = mb_strtolower($carrera['nombre']);
         $instName  = mb_strtolower($carrera['institucion']);
-
         if (strpos($nombre, $texto) === false && strpos($instName, $texto) === false) {
             return false;
         }
     }
-
-    // Filtrar por Área
-    if ($area !== '' && $carrera['area_clave'] !== $area) {
-        return false;
-    }
-
-    // Filtrar por Institución
-    if ($institucion !== '' && $carrera['inst_clave'] !== $institucion) {
-        return false;
-    }
-
-    // Filtrar por Modalidad
-    if ($modalidad !== '' && $carrera['modalidad_clave'] !== $modalidad) {
-        return false;
-    }
-
-    // Filtrar por Sede
-    if ($sede !== '' && $carrera['sede_clave'] !== $sede) {
-        return false;
-    }
-
+    if ($area !== '' && $carrera['area_clave'] !== $area) return false;
+    if ($institucion !== '' && $carrera['inst_clave'] !== $institucion) return false;
+    if ($modalidad !== '' && $carrera['modalidad_clave'] !== $modalidad) return false;
+    if ($sede !== '' && $carrera['sede_clave'] !== $sede) return false;
     return true;
 });
 
@@ -145,16 +131,14 @@ $total_resultados = count($carreras);
             <li><a href="index.php">Inicio</a></li>
             <li><a href="carreras.php" class="active">Explorar carreras</a></li>
             <li><a href="comparar.php">Comparar</a></li>
-            <li><a href="test.php">Test vocacional</a></li>
-            <li><a href="ia.php">Asistente IA</a></li>
+            <li><a href="pages/test.php">Test vocacional</a></li>
         </ul>
         <div class="nav-actions">
             <a href="guardados.php" class="btn-action-saved" title="Guardados">
                 <span>❤️</span> Guardados
             </a>
-            <button class="btn-icon" title="Notificaciones">🔔</button>
             
-            <!-- MENÚ DESPLEGABLE DE USUARIO (CON AVATAR DE GATO) -->
+            <!-- MENÚ DESPLEGABLE DE USUARIO -->
             <details class="user-menu-container">
                 <summary class="user-menu-btn" title="Perfil">
                     <img src="/static/img/gato-avatar.png" alt="Perfil" class="user-avatar-img">
@@ -179,17 +163,22 @@ $total_resultados = count($carreras);
             <p>Encuentra la carrera que se adapta a ti en INACAP y Duoc UC.</p>
         </header>
 
+        <!-- ALERTA DE ERROR SI LA API FALLA -->
+        <?php if (!empty($error_api)): ?>
+            <div style="background-color: #fee2e2; border: 1px solid #ef4444; color: #b91c1c; padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; font-size: 14px;">
+                <?= htmlspecialchars($error_api) ?>
+            </div>
+        <?php endif; ?>
+
         <!-- BARRA DE BÚSQUEDA Y FILTROS -->
         <section class="search-filter-section">
             <form action="carreras.php" method="GET" class="search-form">
                 
-                <!-- Búsqueda Principal -->
                 <div class="main-search-bar">
                     <input type="text" name="q" value="<?= htmlspecialchars($busqueda) ?>" placeholder="Buscar carrera">
                     <button type="submit" class="btn-search">🔍</button>
                 </div>
 
-                <!-- Selectores de Filtro -->
                 <div class="filters-row">
                     <div class="filter-group">
                         <label>Área de estudio</label>
@@ -237,7 +226,6 @@ $total_resultados = count($carreras);
         <!-- FORMULARIO PARA ENVIAR A COMPARAR -->
         <form action="comparar.php" method="GET">
             
-            <!-- HEADER DE RESULTADOS Y BOTÓN COMPARAR -->
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                 <div class="results-count">
                     <strong><?= $total_resultados ?></strong> resultados encontrados
@@ -254,6 +242,12 @@ $total_resultados = count($carreras);
             <section class="careers-list">
                 <?php if ($total_resultados > 0): ?>
                     <?php foreach ($carreras as $carrera): ?>
+                        <?php 
+                            $es_favorito = in_array($carrera['id'], $_SESSION['favoritos']);
+                            $query_params = $_GET;
+                            $query_params['toggle_fav'] = $carrera['id'];
+                            $link_corazon = 'carreras.php?' . http_build_query($query_params);
+                        ?>
                         
                         <div class="career-card" style="position: relative;">
                             
@@ -263,15 +257,15 @@ $total_resultados = count($carreras);
                             </div>
 
                             <!-- Botón de favorito -->
-                            <button class="btn-heart" title="Guardar en favoritos" style="right: 15px;">♡</button>
+                            <a href="<?= $link_corazon ?>" class="btn-heart" title="<?= $es_favorito ? 'Quitar de favoritos' : 'Guardar en favoritos' ?>" style="right: 15px; text-decoration: none;">
+                                <?= $es_favorito ? '❤️' : '♡' ?>
+                            </a>
 
                             <div class="card-left-content" style="padding-left: 30px;">
-                                <!-- Logo institución -->
                                 <div class="institution-logo <?= $carrera['logo_clase'] ?>">
                                     <?= $carrera['logo_texto'] ?>
                                 </div>
 
-                                <!-- Detalles principales -->
                                 <div class="career-details">
                                     <h2><a href="detalle.php?id=<?= $carrera['id'] ?>"><?= htmlspecialchars($carrera['nombre']) ?></a></h2>
                                     <p class="institution-name"><?= htmlspecialchars($carrera['institucion']) ?></p>
@@ -288,7 +282,6 @@ $total_resultados = count($carreras);
                                 </div>
                             </div>
 
-                            <!-- Lado derecho: Arancel y Acción -->
                             <div class="card-right-content">
                                 <div class="price-box">
                                     <strong><?= htmlspecialchars($carrera['arancel']) ?></strong>
@@ -308,7 +301,6 @@ $total_resultados = count($carreras);
         
         </form>
 
-        <!-- PAGINACIÓN -->
         <div class="pagination">
             <a href="#" class="page-nav">&lt;</a>
             <a href="#" class="page-num active">1</a>
@@ -316,6 +308,36 @@ $total_resultados = count($carreras);
         </div>
 
     </main>
+
+    <!-- ASISTENTE DE IA FLOTANTE Y DESPLEGABLE -->
+    <details id="ai-assistant-wrapper">
+        <summary id="ai-toggle-btn">
+            <span>🤖</span> Asistente IA
+        </summary>
+        
+        <div class="ai-chat-box">
+            <div class="ai-chat-header">
+                <div class="ai-header-title">
+                    <span>🤖</span>
+                    <div>
+                        <strong>Asistente Virtual IA</strong>
+                        <span>Orientación vocacional</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="ai-chat-body">
+                <div class="ai-message bot">
+                    ¡Hola! ¿Buscas alguna carrera en particular o necesitas ayuda con los filtros?
+                </div>
+            </div>
+
+            <div class="ai-chat-footer">
+                <input type="text" placeholder="Escribe tu duda aquí...">
+                <button type="button">➤</button>
+            </div>
+        </div>
+    </details>
 
 </body>
 </html>
