@@ -16,11 +16,14 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
-from scraper import views
+from scraper import api, views
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/v1/catalogo/', views.api_catalogo_inacap, name='api_catalogo'),
+    path('api/v1/ofertas/', api.OfertaListView.as_view(), name='api_ofertas'),
+    path('api/v1/ofertas/<int:pk>/', api.OfertaDetailView.as_view(), name='api_oferta_detalle'),
+    path('api/v1/filtros/', api.FiltrosView.as_view(), name='api_filtros'),
     path('', include('chatbot.urls')),
     path('', include('usuarios.urls')),
 ]
