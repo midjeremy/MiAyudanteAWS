@@ -34,7 +34,8 @@ class OfertasBaseView:
 
 class OfertaListView(OfertasBaseView, ListAPIView):
     """
-    Filtros: q, institucion, sede, modalidad, region, nivel, carrera (contiene), excluir (no contiene)
+    Filtros: q, institucion, sede, modalidad, region, nivel, carrera (contiene), excluir (no contiene),
+    carrera_id (todas las ofertas de una carrera)
     e ids (lista separada por comas, para comparar o mostrar guardados).
     """
     pagination_class = PaginacionCatalogo
@@ -46,6 +47,8 @@ class OfertaListView(OfertasBaseView, ListAPIView):
         if ids := parametros.get('ids'):
             numeros = [int(valor) for valor in ids.split(',') if valor.strip().isdigit()][:MAXIMO_IDS]
             consulta = consulta.filter(id__in=numeros)
+        if (carrera_id := parametros.get('carrera_id', '')).isdigit():
+            consulta = consulta.filter(carrera_id=int(carrera_id))
         if texto := parametros.get('q', '').strip():
             consulta = consulta.filter(
                 Q(carrera__nombre_carrera__icontains=texto) | Q(institucion__nombre__icontains=texto)
