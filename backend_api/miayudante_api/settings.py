@@ -84,6 +84,7 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_THROTTLE_RATES': {
         'auth': '20/min',
+        'chatbot': '10/min',
     },
     # Nginx o PHP envían la IP real del visitante en X-Forwarded-For
     'NUM_PROXIES': 1,
