@@ -1,5 +1,5 @@
 <?php
-//INICIAR LA SESIÓN Y CARGAR LA API BFF
+// INICIAR LA SESIÓN Y CARGAR LA API BFF
 session_start();
 require_once 'api.php';
 require_once 'catalogo.php';
@@ -27,21 +27,27 @@ if (isset($_GET['toggle_fav'])) {
     exit;
 }
 
-//FILTROS DE BÚSQUEDA: Django filtra y pagina, PHP solo arma la vista (BFF)
+// FILTROS DE BÚSQUEDA
 $busqueda     = isset($_GET['q']) ? trim($_GET['q']) : '';
 $area         = isset($_GET['area']) ? $_GET['area'] : '';
 $institucion  = isset($_GET['institucion']) ? $_GET['institucion'] : '';
 $modalidad    = isset($_GET['modalidad']) ? $_GET['modalidad'] : '';
-$sede         = isset($_GET['sede']) ? $_GET['sede'] : '';
+$region       = isset($_GET['region']) ? trim($_GET['region']) : '';
 $pagina       = max(1, intval($_GET['page'] ?? 1));
+$carrera_id   = max(0, intval($_GET['carrera_id'] ?? 0));
+
+// Vista por defecto: una tarjeta por carrera. Al elegir una carrera se ven sus ofertas
+$vista        = ($carrera_id > 0) ? 'ofertas' : 'carreras';
+$carrera_id_val = ($carrera_id > 0) ? $carrera_id : '';
 
 $parametros = array_filter([
-    'q' => $busqueda,
+    'q'           => $busqueda,
     'institucion' => $institucion,
-    'modalidad' => $modalidad,
-    'sede' => $sede,
-    'page' => $pagina,
-    'page_size' => TAMANO_PAGINA,
+    'modalidad'   => $modalidad,
+    'region'      => $region,
+    'carrera_id'  => $carrera_id_val,
+    'page'        => $pagina,
+    'page_size'   => TAMANO_PAGINA,
 ], fn($valor) => $valor !== '');
 
 // El área aún no existe en los datos: se aproxima por el nombre de la carrera
@@ -51,21 +57,21 @@ if ($area === 'diseno') {
     $parametros['excluir'] = 'diseño';
 }
 
-$respuesta = api_get('/api/v1/ofertas/?' . http_build_query($parametros));
+$endpoint = ($vista === 'carreras') ? '/api/v1/carreras/?' : '/api/v1/ofertas/?';
+$respuesta = api_get($endpoint . http_build_query($parametros));
 if ($respuesta === null && $pagina > 1) {
-    // Página fuera de rango: se vuelve a la primera
     $pagina = 1;
     $parametros['page'] = 1;
-    $respuesta = api_get('/api/v1/ofertas/?' . http_build_query($parametros));
+    $respuesta = api_get($endpoint . http_build_query($parametros));
 }
 if ($respuesta === null) {
     $error_api = 'No se pudo cargar el catálogo. Inténtalo más tarde.';
     $respuesta = ['count' => 0, 'results' => []];
 }
 
-$filtros = api_get('/api/v1/filtros/') ?? ['sedes' => []];
+$filtros = api_get('/api/v1/filtros/') ?? ['sedes' => [], 'regiones' => []];
 
-$carreras = array_map('oferta_a_tarjeta', $respuesta['results']);
+$carreras = array_map(($vista === 'carreras') ? 'carrera_a_tarjeta' : 'oferta_a_tarjeta', $respuesta['results']);
 $total_resultados = $respuesta['count'];
 $total_paginas = max(1, (int) ceil($total_resultados / TAMANO_PAGINA));
 
@@ -82,8 +88,6 @@ function enlace_pagina(int $numero): string{
     <title>Explorar carreras - Mi Ayudante</title>
     <link rel="stylesheet" href="/static/css/carreras.css">
     <link rel="stylesheet" href="/static/css/responsive.css">
-    <link rel="stylesheet" href="/static/css/chat.css">
-    <script src="/static/js/chat.js" defer></script>
 </head>
 <body class="portal-body">
 
@@ -107,7 +111,6 @@ function enlace_pagina(int $numero): string{
                 <span>❤️</span> Guardados
             </a>
             
-            <!-- MENÚ DESPLEGABLE DE USUARIO -->
             <details class="user-menu-container">
                 <summary class="user-menu-btn" title="Perfil">
                     <img src="/static/img/gato-avatar.png" alt="Perfil" class="user-avatar-img">
@@ -126,13 +129,11 @@ function enlace_pagina(int $numero): string{
     <!-- CONTENEDOR PRINCIPAL -->
     <main class="main-container">
         
-        <!-- ENCABEZADO -->
         <header class="page-header">
             <h1>Explorar carreras</h1>
             <p>Encuentra la carrera que se adapta a ti en INACAP y Duoc UC.</p>
         </header>
 
-        <!-- ALERTA DE ERROR SI LA API FALLA -->
         <?php if (!empty($error_api)): ?>
             <div style="background-color: #fee2e2; border: 1px solid #ef4444; color: #b91c1c; padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; font-size: 14px;">
                 <?= htmlspecialchars($error_api) ?>
@@ -142,6 +143,9 @@ function enlace_pagina(int $numero): string{
         <!-- BARRA DE BÚSQUEDA Y FILTROS -->
         <section class="search-filter-section">
             <form action="carreras.php" method="GET" class="search-form">
+                <?php if ($carrera_id > 0): ?>
+                    <input type="hidden" name="carrera_id" value="<?= $carrera_id ?>">
+                <?php endif; ?>
                 
                 <div class="main-search-bar">
                     <input type="text" name="q" value="<?= htmlspecialchars($busqueda) ?>" placeholder="Buscar carrera">
@@ -177,11 +181,12 @@ function enlace_pagina(int $numero): string{
                     </div>
 
                     <div class="filter-group">
-                        <label>Sede</label>
-                        <select name="sede" onchange="this.form.submit()">
+                        <label>Región</label>
+                        <select name="region" onchange="this.form.submit()">
                             <option value="">Todas</option>
-                            <?php foreach ($filtros['sedes'] as $opcion): ?>
-                                <option value="<?= htmlspecialchars($opcion['clave']) ?>" <?= $sede === $opcion['clave'] ? 'selected' : '' ?>><?= htmlspecialchars($opcion['nombre']) ?></option>
+                            <?php foreach ($filtros['regiones'] ?? [] as $opcion_region): ?>
+                                <?php if ($opcion_region === 'Online') continue; ?>
+                                <option value="<?= htmlspecialchars($opcion_region) ?>" <?= $region === $opcion_region ? 'selected' : '' ?>><?= htmlspecialchars($opcion_region) ?></option>
                             <?php endforeach; ?>
                         </select>
                     </div>
@@ -196,10 +201,13 @@ function enlace_pagina(int $numero): string{
             
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                 <div class="results-count">
-                    <strong><?= $total_resultados ?></strong> resultados encontrados
+                    <strong><?= $total_resultados ?></strong> <?= $vista === 'carreras' ? 'carreras encontradas' : 'ofertas encontradas' ?>
+                    <?php if ($carrera_id > 0): ?>
+                        · <a href="carreras.php">← Volver a todas las carreras</a>
+                    <?php endif; ?>
                 </div>
                 
-                <?php if ($total_resultados > 0): ?>
+                <?php if ($total_resultados > 0 && $vista === 'ofertas'): ?>
                 <button type="submit" style="background-color: #4f46e5; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 14px;">
                     <span>⚖️</span> Comparar seleccionadas
                 </button>
@@ -219,6 +227,7 @@ function enlace_pagina(int $numero): string{
                         
                         <div class="career-card" style="position: relative;">
                             
+                            <?php if (empty($carrera['es_carrera'])): ?>
                             <!-- CHECKBOX DE SELECCIÓN -->
                             <div style="position: absolute; top: 15px; left: 15px; z-index: 10;">
                                 <input type="checkbox" name="ids[]" value="<?= $carrera['id'] ?>" style="width: 20px; height: 20px; cursor: pointer;" title="Seleccionar para comparar">
@@ -228,6 +237,7 @@ function enlace_pagina(int $numero): string{
                             <a href="<?= $link_corazon ?>" class="btn-heart" title="<?= $es_favorito ? 'Quitar de favoritos' : 'Guardar en favoritos' ?>" style="right: 15px; text-decoration: none;">
                                 <?= $es_favorito ? '❤️' : '♡' ?>
                             </a>
+                            <?php endif; ?>
 
                             <div class="card-left-content" style="padding-left: 30px;">
                                 <div class="institution-logo <?= $carrera['logo_clase'] ?>">
@@ -235,12 +245,10 @@ function enlace_pagina(int $numero): string{
                                 </div>
 
                                 <div class="career-details">
-                                    <h2><a href="detalle.php?id=<?= $carrera['id'] ?>"><?= htmlspecialchars($carrera['nombre']) ?></a></h2>
+                                    <h2><a href="<?= !empty($carrera['es_carrera']) ? 'carreras.php?carrera_id=' : 'detalle.php?id=' ?><?= $carrera['id'] ?>"><?= htmlspecialchars($carrera['nombre']) ?></a></h2>
                                     <p class="institution-name"><?= htmlspecialchars($carrera['institucion']) ?></p>
 
-                                    <span class="category-badge <?= $carrera['categoria_clase'] ?>">
-                                        <?= htmlspecialchars($carrera['categoria']) ?>
-                                    </span>
+                                    <!-- Etiqueta eliminada para que no aparezca el badge de tecnología ni diseño -->
 
                                     <div class="career-meta">
                                         <span>📍 <?= htmlspecialchars($carrera['ubicacion']) ?></span>
@@ -255,7 +263,11 @@ function enlace_pagina(int $numero): string{
                                     <strong><?= htmlspecialchars($carrera['arancel']) ?></strong>
                                     <span><?= htmlspecialchars($carrera['arancel_periodo']) ?></span>
                                 </div>
-                                <a href="detalle.php?id=<?= $carrera['id'] ?>" class="btn-details">Ver detalles</a>
+                                <?php if (!empty($carrera['es_carrera'])): ?>
+                                    <a href="carreras.php?carrera_id=<?= $carrera['id'] ?>" class="btn-details">Ver sedes y aranceles</a>
+                                <?php else: ?>
+                                    <a href="detalle.php?id=<?= $carrera['id'] ?>" class="btn-details">Ver detalles</a>
+                                <?php endif; ?>
                             </div>
 
                         </div>
@@ -281,7 +293,7 @@ function enlace_pagina(int $numero): string{
 
     </main>
 
-    <!-- ASISTENTE DE IA FLOTANTE Y DESPLEGABLE -->
+    <!-- ASISTENTE DE IA FLOTANTE -->
     <details id="ai-assistant-wrapper">
         <summary id="ai-toggle-btn">
             <span>🤖</span> Asistente IA
@@ -304,10 +316,10 @@ function enlace_pagina(int $numero): string{
                 </div>
             </div>
 
-            <form class="ai-chat-footer">
-                <input type="text" placeholder="Escribe tu duda aquí..." aria-label="Escribe tu duda" maxlength="500" autocomplete="off" required>
-                <button type="submit" aria-label="Enviar mensaje">➤</button>
-            </form>
+            <div class="ai-chat-footer">
+                <input type="text" placeholder="Escribe tu duda aquí...">
+                <button type="button">➤</button>
+            </div>
         </div>
     </details>
 
