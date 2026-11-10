@@ -17,6 +17,7 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 from scraper import api, api_carreras, views
+from Test_Ikigai.views import EvaluarIkigaiView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -26,6 +27,7 @@ urlpatterns = [
     path('api/v1/carreras/', api_carreras.CarreraListView.as_view(), name='api_carreras'),
     path('api/v1/carreras/<int:pk>/', api_carreras.CarreraDetailView.as_view(), name='api_carrera_detalle'),
     path('api/v1/filtros/', api.FiltrosView.as_view(), name='api_filtros'),
+    path('api/ikigai/evaluar/', EvaluarIkigaiView.as_view(), name='evaluar-ikigai'), #view para probar si fuciona el calculo del test ikigai
     path('', include('chatbot.urls')),
     path('', include('usuarios.urls')),
 ]
