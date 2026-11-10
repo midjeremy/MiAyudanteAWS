@@ -1,17 +1,32 @@
 <?php
-//INICIAR LA SESIÓN Y CARGAR EL BFF (api.php)
+// INICIAR LA SESIÓN Y CARGAR EL BFF (api.php)
 session_start();
 require_once 'api.php';
 require_once 'catalogo.php';
 
-//LEER LOS IDs QUE SELECCIONÓ EL USUARIO EN CARRERAS.PHP (máximo 2)
+// LEER LOS IDs QUE SELECCIONÓ EL USUARIO EN CARRERAS.PHP (máximo 2)
 $ids_seleccionados = isset($_GET['ids']) ? array_slice(array_map('intval', (array) $_GET['ids']), 0, 2) : [];
 
-//PEDIR A DJANGO SOLO ESAS OFERTAS, POR SU ID REAL
+// PEDIR A DJANGO LAS OFERTAS SELECCIONADAS
 $carreras_por_id = [];
 if (!empty($ids_seleccionados)) {
     $respuesta = api_get('/api/v1/ofertas/?' . http_build_query(['ids' => implode(',', $ids_seleccionados)]));
-    foreach ($respuesta['results'] ?? [] as $row) {
+    
+    // Fallback por si la API usa el endpoint global de catálogo
+    if (empty($respuesta['results'])) {
+        $catalogo_raw = api_get('/api/v1/catalogo/');
+        if (is_array($catalogo_raw)) {
+            $respuesta = ['results' => $catalogo_raw];
+        }
+    }
+
+    $resultados_api = $respuesta['results'] ?? (is_array($respuesta) ? $respuesta : []);
+    
+    foreach ($resultados_api as $row) {
+        if (!in_array($row['id'], $ids_seleccionados)) {
+            continue;
+        }
+
         $inst_clave = strtolower($row['institucion_codigo'] ?? '');
         $semestres = (int) ($row['duracion_semestres'] ?? 0);
         $arancel = arancel_de_oferta($row);
@@ -22,9 +37,7 @@ if (!empty($ids_seleccionados)) {
             'nombre' => $row['carrera'] ?? '',
             'sede_nombre' => $row['sede'] ?? '',
             'sede_ubicacion' => $row['region'] ?? 'Región no informada',
-            'tema_color' => ($inst_clave === 'duoc') ? 'card-teal' : 'card-purple',
-            'badge_color' => ($inst_clave === 'duoc') ? 'badge-teal' : 'badge-purple',
-            'logo_text' => ($inst_clave === 'duoc') ? 'DuocUC' : '■',
+            'logo_text' => ($inst_clave === 'duoc') ? 'DuocUC' : 'inacap',
             'logo_class' => ($inst_clave === 'duoc') ? 'duoc-logo' : 'square-logo',
             'arancel' => $arancel['monto'],
             'arancel_periodo' => $arancel['periodo'],
@@ -39,15 +52,28 @@ if (!empty($ids_seleccionados)) {
     }
 }
 
-//RESPETAR EL ORDEN EN QUE EL USUARIO LAS ELIGIÓ
+// RESPETAR EL ORDEN EN QUE EL USUARIO LAS ELIGIÓ Y ASIGNAR COLORES INDEPENDIENTES POR POSICIÓN
 $carreras_seleccionadas = [];
+$paleta_colores = [
+    ['tema_color' => 'card-purple', 'badge_color' => 'badge-purple'],
+    ['tema_color' => 'card-teal', 'badge_color' => 'badge-teal']
+];
+
+$index = 0;
 foreach ($ids_seleccionados as $id_sel) {
     if (isset($carreras_por_id[$id_sel])) {
-        $carreras_seleccionadas[] = $carreras_por_id[$id_sel];
+        $carrera_item = $carreras_por_id[$id_sel];
+        // Asignar colores alternados según la columna (0 o 1) para que nunca se repitan
+        $estilo = $paleta_colores[$index % count($paleta_colores)];
+        $carrera_item['tema_color'] = $estilo['tema_color'];
+        $carrera_item['badge_color'] = $estilo['badge_color'];
+        
+        $carreras_seleccionadas[] = $carrera_item;
+        $index++;
     }
 }
 
-//ASIGNAR LAS COLUMNAS (Máximo 2)
+// ASIGNAR LAS COLUMNAS (Máximo 2)
 $carrera1 = $carreras_seleccionadas[0] ?? null;
 $carrera2 = $carreras_seleccionadas[1] ?? null;
 ?>
@@ -59,8 +85,6 @@ $carrera2 = $carreras_seleccionadas[1] ?? null;
     <title>Comparar Carreras - Mi Ayudante</title>
     <link rel="stylesheet" href="/static/css/comparar.css">
     <link rel="stylesheet" href="/static/css/responsive.css">
-    <link rel="stylesheet" href="/static/css/chat.css">
-    <script src="/static/js/chat.js" defer></script>
 </head>
 <body class="app-body">
 
@@ -126,7 +150,7 @@ $carrera2 = $carreras_seleccionadas[1] ?? null;
                     <?php 
                     $contador_sidebar = 1;
                     if(count($carreras_seleccionadas) > 0):
-                        foreach (array_slice($carreras_seleccionadas, 0, 2) as $carrera_sidebar): 
+                        foreach ($carreras_seleccionadas as $carrera_sidebar): 
                     ?>
                         <div class="selected-career">
                             <div class="career-number <?= $carrera_sidebar['badge_color'] ?>"><?= $contador_sidebar ?></div>
@@ -166,14 +190,14 @@ $carrera2 = $carreras_seleccionadas[1] ?? null;
                 </div>
             </aside>
 
-            <!--ÁREA DE COMPARACIÓN-->
+            <!-- ÁREA DE COMPARACIÓN -->
             <section class="comparison-content">
                 
                 <?php if($carrera1 && $carrera2): ?>
                 
-                <!-- Encabezados de las carreras-->
+                <!-- Encabezados de las carreras -->
                 <div class="comparison-headers">
-                    <!-- Tarjeta 1-->
+                    <!-- Tarjeta 1 -->
                     <div class="header-card <?= $carrera1['tema_color'] ?>">
                         <div class="card-top">
                             <div class="inst-logo <?= $carrera1['logo_class'] ?>"><?= $carrera1['logo_text'] ?></div>
@@ -187,7 +211,7 @@ $carrera2 = $carreras_seleccionadas[1] ?? null;
                     <!-- Insignia VS -->
                     <div class="vs-badge">VS</div>
 
-                    <!--Tarjeta 2-->
+                    <!-- Tarjeta 2 -->
                     <div class="header-card <?= $carrera2['tema_color'] ?>">
                         <div class="card-top">
                             <div class="inst-logo <?= $carrera2['logo_class'] ?>"><?= $carrera2['logo_text'] ?></div>
@@ -221,7 +245,7 @@ $carrera2 = $carreras_seleccionadas[1] ?? null;
                         </div>
                     </div>
 
-                    <!--Duración-->
+                    <!-- Duración -->
                     <div class="compare-row">
                         <div class="feature-label">
                             <span class="icon">⏱</span>
@@ -240,7 +264,7 @@ $carrera2 = $carreras_seleccionadas[1] ?? null;
                         </div>
                     </div>
 
-                    <!--Título-->
+                    <!-- Título -->
                     <div class="compare-row">
                         <div class="feature-label">
                             <span class="icon">📜</span>
@@ -259,7 +283,7 @@ $carrera2 = $carreras_seleccionadas[1] ?? null;
                         </div>
                     </div>
 
-                    <!--Modalidad-->
+                    <!-- Modalidad -->
                     <div class="compare-row">
                         <div class="feature-label">
                             <span class="icon">📖</span>
@@ -278,7 +302,7 @@ $carrera2 = $carreras_seleccionadas[1] ?? null;
                         </div>
                     </div>
 
-                    <!--Sede-->
+                    <!-- Sede -->
                     <div class="compare-row">
                         <div class="feature-label">
                             <span class="icon">📍</span>
@@ -297,8 +321,8 @@ $carrera2 = $carreras_seleccionadas[1] ?? null;
                         </div>
                     </div>
 
-                    <!--Malla-->
-                    <div class="compre-row border-none">
+                    <!-- Malla -->
+                    <div class="compare-row border-none">
                         <div class="feature-label">
                             <span class="icon">🎓</span>
                             <div>
@@ -315,7 +339,7 @@ $carrera2 = $carreras_seleccionadas[1] ?? null;
                     </div>
                 </div>
 
-                <!--Botones inferiores-->
+                <!-- Botones inferiores -->
                 <div class="bottom-actions">
                     <button class="btn-outline" onclick="window.location.href='carreras.php'">← Volver a resultados</button>
                     <button class="btn-primary">⭐ Ver recomendaciones</button>
@@ -357,10 +381,10 @@ $carrera2 = $carreras_seleccionadas[1] ?? null;
                 </div>
             </div>
 
-            <form class="ai-chat-footer">
-                <input type="text" placeholder="Escribe tu duda aquí..." aria-label="Escribe tu duda" maxlength="500" autocomplete="off" required>
-                <button type="submit" aria-label="Enviar mensaje">➤</button>
-            </form>
+            <div class="ai-chat-footer">
+                <input type="text" placeholder="Escribe tu duda aquí...">
+                <button type="button">➤</button>
+            </div>
         </div>
     </details>
 

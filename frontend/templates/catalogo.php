@@ -45,3 +45,23 @@ function oferta_a_tarjeta(array $row): array{
         "arancel_periodo" => $arancel['periodo'],
     ];
 }
+
+// Tarjeta de una carrera agrupada (vista "carreras"): resume todas sus sedes y jornadas
+function carrera_a_tarjeta(array $row): array{
+    $tarjeta = oferta_a_tarjeta([
+        'id' => $row['id'],
+        'institucion' => $row['institucion'] ?? '',
+        'institucion_codigo' => $row['institucion_codigo'] ?? '',
+        'carrera' => $row['carrera'] ?? '',
+        'duracion_semestres' => $row['duracion_semestres'] ?? null,
+        'modalidad' => implode(' / ', $row['modalidades'] ?? []) ?: 'No informada',
+        'arancel_referencia' => $row['arancel_desde'] ?? null,
+    ]);
+    $total_sedes = (int) ($row['total_sedes'] ?? 0);
+    $tarjeta['ubicacion'] = ($total_sedes === 1) ? ($row['sedes'][0] ?? '1 sede') : $total_sedes . ' sedes';
+    if (!empty($row['arancel_desde'])) {
+        $tarjeta['arancel_periodo'] = 'desde · ' . $tarjeta['arancel_periodo'];
+    }
+    $tarjeta['es_carrera'] = true;
+    return $tarjeta;
+}
