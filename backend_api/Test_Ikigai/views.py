@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework import status
 #importar el calculo para el test ikigai
-from .utils import get_ikigai_result
+from .utils import calcularvuser
 
 # Create your views here.
 #prueba
@@ -19,7 +19,7 @@ class EvaluarIkigaiView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        vector_postulante = get_ikigai_result(respuestas)
+        vector_postulante = calcularvuser(respuestas)
 
         #se responde al BFF / cliente con la estructura del JSON terminado
         return Response({
