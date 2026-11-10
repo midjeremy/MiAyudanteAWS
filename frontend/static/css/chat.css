@@ -1,0 +1,35 @@
+/* Estados de la conversación del asistente de IA. La base del widget está en el CSS de cada página. */
+.ai-message {
+    overflow-wrap: anywhere;
+}
+
+/* Respeta los saltos de línea de las respuestas; los saludos del HTML traen sangría */
+.ai-message.conversacion {
+    white-space: pre-line;
+}
+
+.ai-message.user {
+    background: var(--brand-purple);
+    color: white;
+    align-self: flex-end;
+}
+
+.ai-message.escribiendo {
+    color: #64748b;
+    font-style: italic;
+}
+
+.ai-message.error {
+    background: #fef2f2;
+    color: #b91c1c;
+    border-color: #fecaca;
+}
+
+.ai-chat-footer input:disabled {
+    background: #f1f5f9;
+}
+
+.ai-chat-footer button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
