@@ -18,3 +18,9 @@ variable "db_password" {
     error_message = "db_password debe tener al menos 8 caracteres."
   }
 }
+
+variable "correo_alertas" {
+  description = "Correo del Líder Cloud para las alarmas de CloudWatch (vacío = sin correo)"
+  type        = string
+  default     = ""
+}

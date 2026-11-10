@@ -1,3 +1,5 @@
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from scraper.models import OfertaAcademica
@@ -33,6 +35,7 @@ class OfertaSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
+    @extend_schema_field(OpenApiTypes.OBJECT)
     def get_arancel_referencia(self, oferta):
         """Monto publicado por la institución, sin convertirlo a otro período."""
         for periodo, monto in (

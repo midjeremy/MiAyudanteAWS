@@ -1,11 +1,13 @@
 """Catálogo agrupado por carrera: una tarjeta por carrera, sin repetirla por cada sede o jornada."""
 from django.db.models import Count, Min
 from django.shortcuts import get_object_or_404
+from drf_spectacular.utils import extend_schema
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from scraper.api import OfertaListView, PaginacionCatalogo
+from scraper.documentacion import FILTROS_CATALOGO, CarreraDetalleSerializer, CarreraPaginadaSerializer
 from scraper.models import Carrera
 from scraper.serializers import OfertaSerializer
 
@@ -76,6 +78,8 @@ class CarreraListView(APIView):
     """GET /api/v1/carreras/: mismos filtros que /api/v1/ofertas/, pero una fila por carrera."""
     permission_classes = [AllowAny]
 
+    @extend_schema(tags=['Catálogo'], summary='Carreras agrupadas (una fila por carrera)', operation_id='carreras_listar',
+                   parameters=FILTROS_CATALOGO, responses=CarreraPaginadaSerializer)
     def get(self, request):
         ofertas = ofertas_filtradas(request)
         carreras = (
@@ -96,6 +100,8 @@ class CarreraDetailView(APIView):
     """GET /api/v1/carreras/<id>/: la carrera con todas sus ofertas (sedes, jornadas y aranceles)."""
     permission_classes = [AllowAny]
 
+    @extend_schema(tags=['Catálogo'], summary='Detalle de una carrera con todas sus ofertas',
+                   responses=CarreraDetalleSerializer)
     def get(self, request, pk):
         carrera = get_object_or_404(Carrera.objects.select_related('institucion'), pk=pk)
         ofertas = OfertaListView.queryset.filter(carrera=carrera)

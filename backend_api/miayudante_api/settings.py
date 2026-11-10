@@ -31,6 +31,18 @@ DEBUG = os.getenv('DEBUG') == 'True'
 
 ALLOWED_HOSTS = [host.strip() for host in os.getenv('ALLOWED_HOSTS', '').split(',') if host.strip()]
 
+# HTTPS: Nginx termina el TLS y avisa a Django con X-Forwarded-Proto.
+# DOMINIO lo escribe el deploy en el .env cuando la variable DOMINIO existe en GitHub.
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+# PHP llama a Gunicorn directo por 127.0.0.1:8000 (MIAYUDANTE_API_URL lo fija Nginx)
+for host_local in ('127.0.0.1', 'localhost'):
+    if host_local not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(host_local)
+DOMINIO = os.getenv('DOMINIO', '').strip().lower()
+if DOMINIO:
+    ALLOWED_HOSTS += [DOMINIO, f'www.{DOMINIO}']
+    CSRF_TRUSTED_ORIGINS = [f'https://{DOMINIO}', f'https://www.{DOMINIO}']
+
 
 # Application definition
 
@@ -42,6 +54,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
+    'drf_spectacular',
     'storages',
     'scraper',
     'chatbot',
@@ -88,6 +101,15 @@ REST_FRAMEWORK = {
     },
     # Nginx o PHP envían la IP real del visitante en X-Forwarded-For
     'NUM_PROXIES': 1,
+    # Documentación OpenAPI/Swagger en /api/v1/docs/ (DoD: documentación técnica de la API)
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+}
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'API Mi Ayudante',
+    'DESCRIPTION': 'Catálogo de carreras de INACAP y Duoc UC, autenticación JWT, test Ikigai y asistente.',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
 }
 
 SIMPLE_JWT = {

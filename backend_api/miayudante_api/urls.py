@@ -16,11 +16,19 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
-from scraper import api, api_carreras, views
+from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
+
+from scraper import api, api_carreras, salud, views
 from Test_Ikigai.views import EvaluarIkigaiView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    # Monitoreo (SLA 01): /health/deep compara dos ofertas reales contra PostgreSQL
+    path('health', salud.SaludView.as_view(), name='salud'),
+    path('health/deep', salud.SaludProfundaView.as_view(), name='salud_profunda'),
+    # Documentación de la API (DoD): esquema OpenAPI y Swagger UI
+    path('api/v1/schema/', SpectacularAPIView.as_view(), name='api_schema'),
+    path('api/v1/docs/', SpectacularSwaggerView.as_view(url_name='api_schema'), name='api_docs'),
     path('api/v1/catalogo/', views.api_catalogo_inacap, name='api_catalogo'),
     path('api/v1/ofertas/', api.OfertaListView.as_view(), name='api_ofertas'),
     path('api/v1/ofertas/<int:pk>/', api.OfertaDetailView.as_view(), name='api_oferta_detalle'),

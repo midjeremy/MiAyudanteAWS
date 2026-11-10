@@ -1,0 +1,2 @@
+# Monitor sintético de /health/deep cada minuto (SLA 01). Publica la métrica MiAyudante/HealthDeep en CloudWatch.
+* * * * * ubuntu /home/ubuntu/MiAyudanteAWS/venv/bin/python /home/ubuntu/MiAyudanteAWS/infraestructura_aws/servidor/monitor_salud.py >> /home/ubuntu/monitor_salud.log 2>&1
