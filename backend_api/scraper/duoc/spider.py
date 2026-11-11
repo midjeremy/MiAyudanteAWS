@@ -42,9 +42,11 @@ class DuocSpider(SitemapSpider):
 
     def parse_carrera(self, response):
         nombre = (response.css('h1::text').get() or '').strip()
-        duracion = response.xpath(
-            '//h2[contains(., "DURACIÓN")]/following-sibling::div[1]//li/text()'
-        ).get()
+        # Todas las líneas: algunas carreras publican '8 semestres (Presencial)' y '16 bimestres (Online)'
+        duraciones = [
+            re.sub(r'\s+', ' ', ''.join(li.xpath('.//text()').getall())).strip()
+            for li in response.xpath('//h2[contains(., "DURACIÓN")]/following-sibling::div[1]//li')
+        ]
         url_malla = response.css('[data-dmc-src]::attr(data-dmc-src)').get()
 
         ofertas = []
@@ -63,7 +65,7 @@ class DuocSpider(SitemapSpider):
             'tipo': 'carrera',
             'url': response.url,
             'nombre': nombre,
-            'duracion_semestres': limpiar_dinero(duracion),
+            'duraciones': [texto for texto in duraciones if texto],
             'url_malla': url_malla,
             'ofertas': ofertas,
         }
