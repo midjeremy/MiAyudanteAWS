@@ -85,6 +85,8 @@ $carrera2 = $carreras_seleccionadas[1] ?? null;
     <title>Comparar Carreras - Mi Ayudante</title>
     <link rel="stylesheet" href="/static/css/comparar.css">
     <link rel="stylesheet" href="/static/css/responsive.css">
+    <link rel="stylesheet" href="/static/css/chat.css">
+    <script src="/static/js/chat.js" defer></script>
 </head>
 <body class="app-body">
 
@@ -381,10 +383,10 @@ $carrera2 = $carreras_seleccionadas[1] ?? null;
                 </div>
             </div>
 
-            <div class="ai-chat-footer">
-                <input type="text" placeholder="Escribe tu duda aquí...">
-                <button type="button">➤</button>
-            </div>
+            <form class="ai-chat-footer">
+                <input type="text" placeholder="Escribe tu duda aquí..." aria-label="Escribe tu duda" maxlength="500" autocomplete="off" required>
+                <button type="submit" aria-label="Enviar mensaje">➤</button>
+            </form>
         </div>
     </details>
 
