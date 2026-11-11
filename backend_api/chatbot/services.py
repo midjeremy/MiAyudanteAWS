@@ -1,41 +1,85 @@
+import json
 import re
+import time
 import unicodedata
 from functools import cache, reduce
-from operator import add
+from itertools import zip_longest
+from operator import or_
 
 from django.conf import settings
-from django.db.models import Case, IntegerField, Q, Value, When
+from django.db.models import Q
 from openai import OpenAI
 
-from scraper.models import OfertaAcademica
+from scraper.models import Institucion, OfertaAcademica
 
 MODELO = "gpt-4o-mini"
-MAX_OFERTAS = 15
-MAX_PALABRAS = 8
-
-# Palabras frecuentes en las preguntas que no ayudan a encontrar una carrera
-PALABRAS_IGNORADAS = {
-    "algo", "algun", "alguna", "ahora", "anual", "aqui", "arancel", "aranceles", "ayuda", "ayudar",
-    "buenas", "buenos", "carrera", "carreras", "como", "comparar", "costo", "costos",
-    "cual", "cuales", "cuando", "cuanto", "cuanta", "cuesta", "cuestan", "dame", "desde", "donde",
-    "dura", "duracion", "esta", "estas", "este", "estos", "estudiar", "gracias", "hola",
-    "informacion", "institucion", "instituciones", "matricula", "mejor", "mensual", "necesito",
-    "ofrece", "ofrecen", "para", "pero", "precio", "precios", "puede", "puedes", "puedo", "quiero",
-    "quisiera", "saber", "sede", "sedes", "semestral", "sobre", "tiene", "tienen", "valor", "valores",
-}
+# Veces que el modelo puede consultar el catálogo antes de responder
+MAX_RONDAS_BUSQUEDA = 4
+# Segundos para responder: chat.php espera 50 y Nginx 60
+TIEMPO_MAXIMO = 40
+MAX_OFERTAS_LEIDAS = 400
+MAX_CARRERAS = 25
+MAX_SEDES = 12
 
 VARIANTES_LETRAS = {"a": "[aá]", "e": "[eé]", "i": "[ií]", "o": "[oó]", "u": "[uúü]", "n": "[nñ]"}
 
-PROMPT_SISTEMA = (
-    "Eres el asistente conversacional de 'Mi Ayudante', una plataforma chilena de orientación "
-    "para estudiantes que eligen carrera. Responde en español, con un tono cercano y en pocas frases. "
-    "Puedes saludar y orientar de forma general sobre cómo elegir una carrera. "
-    "Todo dato concreto (aranceles, matrículas, sedes, jornadas, duraciones o instituciones) debe salir "
-    "ÚNICAMENTE del contexto entregado: nunca lo inventes ni lo estimes. "
-    "Si el dato no está en el contexto, di que no lo tienes y pide más detalles, como la carrera, "
-    "la institución o la sede. "
-    "Escribe en texto plano, sin Markdown."
-)
+CAMPOS_COSTO = [
+    ("arancel_anual", "arancel_anual_clp"),
+    ("arancel_semestral", "arancel_semestral_clp"),
+    ("arancel_mensual", "arancel_mensual_clp"),
+    ("matricula", "matricula_clp"),
+]
+
+PROMPT_SISTEMA = """Eres el asistente de 'Mi Ayudante', una plataforma chilena que ayuda a estudiantes a elegir carrera. \
+Responde en español, con un tono cercano y claro.
+
+Tienes acceso al catálogo oficial de la plataforma con la herramienta buscar_carreras. \
+Instituciones del catálogo: {instituciones}.
+
+Reglas:
+- Ante cualquier pregunta sobre carreras, aranceles, matrículas, sedes, jornadas o duración, usa buscar_carreras antes de responder. \
+Puedes llamarla varias veces, por ejemplo una vez por institución o con otros términos si no encuentras resultados.
+- Si la persona cuenta sus gustos o intereses (por ejemplo, "me gusta crear programas"), deduce qué carreras se relacionan \
+(en ese caso informática, programación, desarrollo de software, ciberseguridad) y búscalas.
+- Cuando pidan comparar, compara tú con los datos obtenidos: carreras disponibles, duración, aranceles, matrícula, jornadas y sedes. \
+Señala las diferencias concretas y termina con una sugerencia breve según lo que contó la persona.
+- No le pidas a la persona que revise por su cuenta las páginas de las instituciones: tu trabajo es entregarle esa información.
+- Todo dato concreto debe salir de los resultados de buscar_carreras. Nunca lo inventes ni lo estimes. \
+Si algo no está en el catálogo, dilo.
+- El chat es pequeño: responde en unas 150 palabras como máximo, en texto plano sin Markdown (sin asteriscos ni #). \
+Para listas usa guiones."""
+
+HERRAMIENTAS = [{
+    "type": "function",
+    "function": {
+        "name": "buscar_carreras",
+        "description": (
+            "Busca en el catálogo de Mi Ayudante y devuelve las carreras agrupadas por institución, con duración, "
+            "título, sedes, jornadas, aranceles y matrícula. Todos los filtros son opcionales, pero se debe usar al menos uno."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "terminos": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Palabras o raíces que se buscan en el nombre de la carrera; basta con que coincida una. "
+                        "Usa raíces cortas para abarcar variantes, por ejemplo ['informat', 'program', 'software'] o ['enfermer']."
+                    ),
+                },
+                "instituciones": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Instituciones del catálogo para filtrar, por ejemplo ['Duoc UC'].",
+                },
+                "sede": {"type": "string", "description": "Sede, comuna o región, por ejemplo 'Maipú'."},
+                "jornada": {"type": "string", "description": "Jornada o modalidad, por ejemplo 'Vespertina' u 'Online'."},
+            },
+            "additionalProperties": False,
+        },
+    },
+}]
 
 
 def quitar_tildes(texto):
@@ -43,107 +87,210 @@ def quitar_tildes(texto):
     return "".join(letra for letra in descompuesto if not unicodedata.combining(letra))
 
 
-def extraer_palabras(texto):
-    """Devuelve las palabras útiles para buscar, sin tildes y sin repetir."""
-    palabras = (quitar_tildes(palabra) for palabra in re.findall(r"\w+", texto.lower()))
-    utiles = [palabra for palabra in palabras if len(palabra) > 3 and palabra not in PALABRAS_IGNORADAS]
-    return list(dict.fromkeys(utiles))
+def normalizar(texto):
+    """Minúsculas, sin tildes ni signos: 'Duoc-UC!' queda 'duoc uc'."""
+    if not isinstance(texto, str):
+        return ""
+    limpio = re.sub(r"[^\w\s]", " ", quitar_tildes(texto.lower()))
+    return " ".join(limpio.split())
 
 
-def patron_flexible(palabra):
+def como_lista(valor):
+    if isinstance(valor, str):
+        valor = [valor]
+    if not isinstance(valor, list):
+        return []
+    return [texto for texto in (normalizar(v) for v in valor) if texto]
+
+
+def patron_flexible(texto):
     """Permite que 'informatica' encuentre 'Informática' y 'diseno' encuentre 'Diseño'."""
-    return "".join(VARIANTES_LETRAS.get(letra, letra) for letra in palabra)
+    return "".join(VARIANTES_LETRAS.get(letra, letra) for letra in texto)
 
 
-def filtro_palabra(palabra):
-    patron = patron_flexible(palabra)
-    return (
-        Q(carrera__nombre_carrera__iregex=patron)
-        | Q(institucion__nombre__iregex=patron)
-        | Q(sede__nombre_sede__iregex=patron)
-        | Q(sede__region__iregex=patron)
-        | Q(jornada__tipo_jornada__iregex=patron)
-    )
+def ids_instituciones(nombres):
+    """Acepta variantes como 'duocUC', 'Duoc' o 'inacap'."""
+    buscados = [nombre.replace(" ", "") for nombre in nombres]
+    return [
+        institucion.id
+        for institucion in Institucion.objects.all()
+        if any(
+            buscado in normalizar(institucion.nombre).replace(" ", "")
+            or buscado == normalizar(institucion.codigo).replace(" ", "")
+            for buscado in buscados
+        )
+    ]
 
 
 def formatear_clp(valor):
     return f"${valor:,.0f}".replace(",", ".")
 
 
-def describir_oferta(oferta):
-    datos = [
-        f"Institución: {oferta.institucion}",
-        f"Carrera: {oferta.carrera}",
-        f"Sede: {oferta.sede}",
-        f"Jornada: {oferta.jornada}",
-    ]
-    if oferta.jornada.modalidad:
-        datos.append(f"Modalidad: {oferta.jornada.modalidad}")
-    if oferta.carrera.duracion_semestres:
-        datos.append(f"Duración: {oferta.carrera.duracion_semestres} semestres")
-
-    costos = [
-        ("Arancel anual", oferta.arancel_anual_clp),
-        ("Arancel semestral", oferta.arancel_semestral_clp),
-        ("Arancel mensual", oferta.arancel_mensual_clp),
-        ("Matrícula", oferta.matricula_clp),
-    ]
-    datos += [f"{nombre}: {formatear_clp(valor)}" for nombre, valor in costos if valor is not None]
-    return "- " + " | ".join(datos)
+def rango_clp(valores):
+    menor, mayor = min(valores), max(valores)
+    if menor == mayor:
+        return formatear_clp(menor)
+    return f"desde {formatear_clp(menor)} hasta {formatear_clp(mayor)}"
 
 
-def recuperar_contexto(consulta_usuario, pregunta_anterior=""):
-    """Busca en PostgreSQL la información fáctica sobre carreras y aranceles."""
-    palabras = extraer_palabras(consulta_usuario)
-    # "¿Y en Maipú?" o "¿cuánto dura?" solo se entienden junto con la pregunta anterior
-    if len(palabras) < 2:
-        palabras += [p for p in extraer_palabras(pregunta_anterior) if p not in palabras]
-    palabras = palabras[:MAX_PALABRAS]
+def resumir_carrera(grupo):
+    resumen = {"institucion": grupo["institucion"], "carrera": grupo["carrera"]}
+    if grupo["duracion"]:
+        resumen["duracion"] = f"{grupo['duracion']} semestres"
+    if grupo["titulo"]:
+        resumen["titulo"] = grupo["titulo"]
 
-    if not palabras:
-        return "No se buscó en la base de datos: el mensaje no menciona carreras, instituciones ni sedes."
+    sedes = sorted(grupo["sedes"])
+    resumen["sedes"] = sedes[:MAX_SEDES]
+    if len(sedes) > MAX_SEDES:
+        resumen["otras_sedes"] = len(sedes) - MAX_SEDES
+    resumen["jornadas"] = sorted(grupo["jornadas"])
 
-    # Primero las ofertas que coinciden con más palabras de la pregunta
-    puntajes = [
-        Case(When(filtro_palabra(palabra), then=Value(1)), default=Value(0), output_field=IntegerField())
-        for palabra in palabras
-    ]
-    ofertas = (
-        OfertaAcademica.objects
-        .select_related("institucion", "carrera", "sede", "jornada")
-        .annotate(coincidencias=reduce(add, puntajes))
-        .filter(coincidencias__gt=0)
-        .order_by("-coincidencias", "carrera__nombre_carrera", "sede__nombre_sede", "id")[:MAX_OFERTAS]
+    for nombre, valores in grupo["costos"].items():
+        if valores:
+            resumen[nombre] = rango_clp(valores)
+    return resumen
+
+
+def buscar_carreras(terminos=None, instituciones=None, sede="", jornada=""):
+    """Herramienta del asistente: consulta el catálogo y agrupa las ofertas por carrera."""
+    terminos = como_lista(terminos)
+    nombres_instituciones = como_lista(instituciones)
+    sede = normalizar(sede)
+    jornada = normalizar(jornada)
+
+    if not (terminos or nombres_instituciones or sede or jornada):
+        return {"error": "Indica al menos un criterio: términos de la carrera, institución, sede o jornada."}
+
+    ofertas = OfertaAcademica.objects.select_related("institucion", "carrera", "sede", "jornada")
+    if terminos:
+        ofertas = ofertas.filter(
+            reduce(or_, (Q(carrera__nombre_carrera__iregex=patron_flexible(t)) for t in terminos))
+        )
+    if nombres_instituciones:
+        ofertas = ofertas.filter(institucion_id__in=ids_instituciones(nombres_instituciones))
+    if sede:
+        patron = patron_flexible(sede)
+        ofertas = ofertas.filter(Q(sede__nombre_sede__iregex=patron) | Q(sede__region__iregex=patron))
+    if jornada:
+        patron = patron_flexible(jornada)
+        ofertas = ofertas.filter(Q(jornada__tipo_jornada__iregex=patron) | Q(jornada__modalidad__iregex=patron))
+
+    ofertas = list(
+        ofertas.order_by("institucion__nombre", "carrera__nombre_carrera", "sede__nombre_sede", "id")[:MAX_OFERTAS_LEIDAS]
     )
 
-    lineas = [describir_oferta(oferta) for oferta in ofertas]
-    if not lineas:
-        return "No se encontró información en la base de datos sobre esta consulta."
-    return "Información académica oficial recuperada de la base de datos:\n" + "\n".join(lineas)
+    grupos = {}
+    for oferta in ofertas:
+        clave = (oferta.institucion.nombre, oferta.carrera.nombre_carrera)
+        grupo = grupos.setdefault(clave, {
+            "institucion": oferta.institucion.nombre,
+            "carrera": oferta.carrera.nombre_carrera,
+            "duracion": oferta.carrera.duracion_semestres,
+            "titulo": oferta.carrera.titulo_otorgado,
+            "sedes": set(),
+            "jornadas": set(),
+            "costos": {nombre: [] for nombre, _ in CAMPOS_COSTO},
+        })
+        grupo["sedes"].add(oferta.sede.nombre_sede)
+        grupo["jornadas"].add(oferta.jornada.tipo_jornada)
+        for nombre, campo in CAMPOS_COSTO:
+            valor = getattr(oferta, campo)
+            if valor is not None:
+                grupo["costos"][nombre].append(valor)
+
+    if not grupos:
+        disponibles = list(Institucion.objects.order_by("nombre").values_list("nombre", flat=True))
+        return {
+            "total_carreras": 0,
+            "aviso": "No hay resultados. Prueba con otros términos o raíces más cortas.",
+            "instituciones_disponibles": disponibles,
+        }
+
+    # Al recortar se alternan las instituciones para que una comparación no quede solo con una
+    por_institucion = {}
+    for grupo in grupos.values():
+        por_institucion.setdefault(grupo["institucion"], []).append(grupo)
+    intercaladas = [grupo for fila in zip_longest(*por_institucion.values()) for grupo in fila if grupo]
+
+    resultado = {
+        "total_carreras": len(grupos),
+        "carreras": [resumir_carrera(grupo) for grupo in intercaladas[:MAX_CARRERAS]],
+    }
+    if len(grupos) > MAX_CARRERAS or len(ofertas) == MAX_OFERTAS_LEIDAS:
+        resultado["aviso"] = "Hay más resultados de los que se muestran: usa términos, institución o sede más específicos."
+    return resultado
+
+
+def ejecutar_herramienta(llamada):
+    if llamada.function.name != "buscar_carreras":
+        resultado = {"error": f"La herramienta {llamada.function.name} no existe."}
+    else:
+        try:
+            argumentos = json.loads(llamada.function.arguments or "{}")
+        except json.JSONDecodeError:
+            argumentos = None
+        if isinstance(argumentos, dict):
+            resultado = buscar_carreras(
+                argumentos.get("terminos"), argumentos.get("instituciones"),
+                argumentos.get("sede", ""), argumentos.get("jornada", ""),
+            )
+        else:
+            resultado = {"error": "Los argumentos deben ser un objeto JSON."}
+    return json.dumps(resultado, ensure_ascii=False)
+
+
+def prompt_sistema():
+    nombres = list(Institucion.objects.order_by("nombre").values_list("nombre", flat=True))
+    return PROMPT_SISTEMA.format(instituciones=", ".join(nombres) or "ninguna cargada todavía")
 
 
 @cache
 def obtener_cliente():
-    # Se crea al primer uso: sin clave solo falla el chat, no el resto de la API.
-    # El tiempo máximo debe ser menor que el que espera chat.php (35 s en total).
-    return OpenAI(api_key=settings.OPENAI_API_KEY, timeout=15, max_retries=1)
+    # Se crea al primer uso: sin clave solo falla el chat, no el resto de la API
+    return OpenAI(api_key=settings.OPENAI_API_KEY, max_retries=0)
 
 
 def generar_respuesta_rag(consulta_usuario, historial=()):
-    """Genera la respuesta con OpenAI usando el contexto de la BD y la conversación previa."""
-    preguntas_previas = [turno["content"] for turno in historial if turno["role"] == "user"]
-    pregunta_anterior = preguntas_previas[-1] if preguntas_previas else ""
-    contexto_factual = recuperar_contexto(consulta_usuario, pregunta_anterior)
+    """Responde con OpenAI. El modelo consulta el catálogo con buscar_carreras las veces que necesite."""
+    cliente = obtener_cliente()
+    mensajes = [
+        {"role": "system", "content": prompt_sistema()},
+        *historial,
+        {"role": "user", "content": consulta_usuario},
+    ]
+    inicio = time.monotonic()
 
-    respuesta = obtener_cliente().chat.completions.create(
-        model=MODELO,
-        messages=[
-            {"role": "system", "content": PROMPT_SISTEMA},
-            {"role": "system", "content": f"Contexto inyectado:\n{contexto_factual}"},
-            *historial,
-            {"role": "user", "content": consulta_usuario},
-        ],
-        temperature=0.2,
-    )
+    for ronda in range(MAX_RONDAS_BUSQUEDA + 1):
+        restante = TIEMPO_MAXIMO - (time.monotonic() - inicio)
+        # En la última ronda, o con poco tiempo, se le pide responder con lo que ya encontró
+        ultima = ronda == MAX_RONDAS_BUSQUEDA or restante < 15
+        respuesta = cliente.chat.completions.create(
+            model=MODELO,
+            messages=mensajes,
+            tools=HERRAMIENTAS,
+            tool_choice="none" if ultima else "auto",
+            temperature=0.2,
+            timeout=max(restante, 5),
+        )
+        mensaje = respuesta.choices[0].message
 
-    return respuesta.choices[0].message.content
+        if ultima or not mensaje.tool_calls:
+            return mensaje.content or "No pude generar una respuesta. ¿Puedes intentarlo de nuevo?"
+
+        mensajes.append({
+            "role": "assistant",
+            "content": mensaje.content,
+            "tool_calls": [
+                {
+                    "id": llamada.id,
+                    "type": "function",
+                    "function": {"name": llamada.function.name, "arguments": llamada.function.arguments},
+                }
+                for llamada in mensaje.tool_calls
+            ],
+        })
+        mensajes.extend(
+            {"role": "tool", "tool_call_id": llamada.id, "content": ejecutar_herramienta(llamada)}
+            for llamada in mensaje.tool_calls
+        )
