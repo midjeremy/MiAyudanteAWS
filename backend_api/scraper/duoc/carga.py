@@ -2,11 +2,27 @@ from decimal import Decimal
 
 from django.db import transaction
 
-from scraper.catalogos import clasificar_nivel, normalizar_jornada, region_de_sede
+from scraper.catalogos import (
+    clasificar_nivel, elegir_duracion, normalizar_jornada, parsear_duraciones, region_de_sede, semestres_publicados,
+)
 from scraper.duoc.spider import normalizar_nombre_sede
 from scraper.models import Carrera, Institucion, Jornada, OfertaAcademica, Sede
 
 MINIMO_CARRERAS = 60
+
+# Resolución VREG 10/2025 de Duoc UC: el "Arancel Semestral [se paga] hasta en 5 cuotas mensuales" y la
+# matrícula comprende "dos valores semestrales iguales". El arancel mensual publicado es una de esas cuotas.
+CUOTAS_POR_SEMESTRE = 5
+PERIODO_MATRICULA = 'semestral'
+
+
+def duraciones_del_item(item):
+    """Duraciones publicadas; acepta lotes antiguos en S3 que solo traían 'duracion_semestres'."""
+    if item.get('duraciones'):
+        return parsear_duraciones(item['duraciones'])
+    if item.get('duracion_semestres'):
+        return parsear_duraciones([f"{item['duracion_semestres']} semestres"])
+    return []
 
 
 def obtener_institucion():
@@ -34,8 +50,12 @@ def validar_items(items):
 
 
 @transaction.atomic
-def cargar_items(items, institucion, lote=None, cuotas_anuales=None):
-    """Carga las carreras válidas y devuelve los ids de las ofertas vigentes."""
+def cargar_items(items, institucion, lote=None, cuotas_por_semestre=CUOTAS_POR_SEMESTRE):
+    """Carga las carreras válidas y devuelve los ids de las ofertas vigentes.
+
+    Se guarda lo publicado (cuota mensual, matrícula semestral, duración en su unidad) y además los valores
+    comparables: arancel semestral y anual calculados con las cuotas, y la duración en meses por modalidad.
+    """
     direcciones = {
         normalizar_nombre_sede(item['nombre']).lower(): item['direccion']
         for item in items if item['tipo'] == 'sede'
@@ -44,13 +64,16 @@ def cargar_items(items, institucion, lote=None, cuotas_anuales=None):
 
     ids_vigentes = []
     for item in validas:
-        duracion = item['duracion_semestres']
+        duraciones = duraciones_del_item(item)
+        semestres = semestres_publicados(duraciones)
+        principal = elegir_duracion(duraciones, 'Presencial')
         carrera, _ = Carrera.objects.update_or_create(
             nombre_carrera=item['nombre'],
             institucion=institucion,
             defaults={
-                'duracion_semestres': duracion,
-                'nivel_formacion': clasificar_nivel(item['nombre'], duracion),
+                'duracion_semestres': semestres,
+                'duracion_texto': ' / '.join(d['texto'] for d in duraciones)[:200],
+                'nivel_formacion': clasificar_nivel(item['nombre'], semestres, principal and principal['meses']),
                 'url_malla': item.get('url_malla'),
                 's3_url_malla_pdf': item.get('malla_s3'),
             },
@@ -65,7 +88,9 @@ def cargar_items(items, institucion, lote=None, cuotas_anuales=None):
             sede.save(update_fields=['region', 'direccion'])
 
             arancel_mensual = oferta['arancel_mensual_clp']
-            arancel_anual = Decimal(arancel_mensual) * cuotas_anuales if cuotas_anuales else None
+            calculados = bool(cuotas_por_semestre and arancel_mensual)
+            arancel_semestral = Decimal(arancel_mensual) * cuotas_por_semestre if calculados else None
+            arancel_anual = arancel_semestral * 2 if calculados else None
 
             for texto_jornada in oferta['jornadas'] or ['']:
                 tipo_jornada, modalidad = normalizar_jornada(texto_jornada, oferta['sede'])
@@ -73,6 +98,7 @@ def cargar_items(items, institucion, lote=None, cuotas_anuales=None):
                     tipo_jornada=tipo_jornada,
                     defaults={'modalidad': modalidad},
                 )
+                duracion = elegir_duracion(duraciones, modalidad or 'Presencial')
                 registro, _ = OfertaAcademica.objects.update_or_create(
                     institucion=institucion,
                     carrera=carrera,
@@ -81,8 +107,13 @@ def cargar_items(items, institucion, lote=None, cuotas_anuales=None):
                     defaults={
                         'lote_scraping': lote,
                         'matricula_clp': oferta['matricula_clp'],
+                        'matricula_periodo': PERIODO_MATRICULA,
                         'arancel_mensual_clp': arancel_mensual,
+                        'arancel_semestral_clp': arancel_semestral,
                         'arancel_anual_clp': arancel_anual,
+                        'aranceles_calculados': calculados,
+                        'duracion_texto': duracion['resumen'] if duracion else '',
+                        'duracion_meses': duracion['meses'] if duracion else None,
                     },
                 )
                 ids_vigentes.append(registro.id)

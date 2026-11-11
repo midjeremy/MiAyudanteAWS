@@ -3,7 +3,10 @@ from decimal import Decimal
 from django.test import SimpleTestCase, TestCase
 from scrapy.http import HtmlResponse, Request
 
-from scraper.catalogos import NIVEL_PROFESIONAL, NIVEL_TECNICO, clasificar_nivel, normalizar_jornada, region_de_sede
+from scraper.catalogos import (
+    NIVEL_PROFESIONAL, NIVEL_TECNICO, clasificar_nivel, elegir_duracion, normalizar_jornada, parsear_duraciones,
+    region_de_sede, semestres_publicados,
+)
 from scraper.duoc.carga import cargar_items, obtener_institucion, validar_items
 from scraper.duoc.spider import DuocSpider, extraer_jornadas, limpiar_dinero, normalizar_nombre_sede
 from scraper.etl import retirar_ofertas_obsoletas, tasa_exito
@@ -80,6 +83,31 @@ class CatalogosTests(SimpleTestCase):
         self.assertEqual(clasificar_nivel('Analista Programador', 5), NIVEL_TECNICO)
         self.assertEqual(clasificar_nivel('Diseño Gráfico', 8), NIVEL_PROFESIONAL)
         self.assertIsNone(clasificar_nivel('Diseño Gráfico', None))
+        # Solo en bimestres: se usa la duración en meses
+        self.assertEqual(clasificar_nivel('Desarrollo de Aplicaciones', None, 20), NIVEL_TECNICO)
+        self.assertEqual(clasificar_nivel('Auditoría y Análisis de Negocios', None, 36), NIVEL_PROFESIONAL)
+
+    def test_parsear_duraciones_publicadas_por_duoc(self):
+        # Textos reales de las páginas de carreras de Duoc UC
+        casos = {
+            '18 bimestres': (18, 'bimestre', 36, None, '18 bimestres'),
+            '8 semestres (Presencial)': (8, 'semestre', 48, 'Presencial', '8 semestres'),
+            '16 bimestres (Online)': (16, 'bimestre', 32, 'Online', '16 bimestres'),
+            '18 bimestres (Carrera online)': (18, 'bimestre', 36, 'Online', '18 bimestres'),
+            '100% Online de 18 bimestres': (18, 'bimestre', 36, 'Online', '18 bimestres'),
+            '9 bimestres (Online)': (9, 'bimestre', 18, 'Online', '9 bimestres'),
+        }
+        for texto, esperado in casos.items():
+            d = parsear_duraciones([texto])[0]
+            self.assertEqual((d['valor'], d['unidad'], d['meses'], d['modalidad'], d['resumen']), esperado, texto)
+        self.assertEqual(parsear_duraciones(['Consultar', '']), [])
+
+    def test_elegir_duracion_por_modalidad(self):
+        duraciones = parsear_duraciones(['8 semestres', '100% Online de 18 bimestres'])
+        self.assertEqual(elegir_duracion(duraciones, 'Presencial')['resumen'], '8 semestres')
+        self.assertEqual(elegir_duracion(duraciones, 'Online')['resumen'], '18 bimestres')
+        self.assertEqual(semestres_publicados(duraciones), 8)
+        self.assertIsNone(semestres_publicados(parsear_duraciones(['18 bimestres'])))
 
     def test_tasa_exito(self):
         self.assertEqual(tasa_exito(76, 80), 95)
@@ -93,7 +121,7 @@ class DuocSpiderTests(SimpleTestCase):
         self.assertEqual(solicitud.url, 'https://malla.duoc.cl/mallas/x/047.html')
         self.assertTrue(solicitud.dont_filter)
         self.assertEqual(item['nombre'], 'Analista Programador')
-        self.assertEqual(item['duracion_semestres'], 5)
+        self.assertEqual(item['duraciones'], ['5 semestres'])
         self.assertEqual(item['url_malla'], 'https://malla.duoc.cl/mallas/x/047.html')
         self.assertEqual(item['ofertas'], [{
             'sede': 'Maipú',
@@ -121,7 +149,7 @@ class CargaDuocTests(TestCase):
                 'tipo': 'carrera',
                 'url': 'https://www.duoc.cl/carreras/x/',
                 'nombre': 'Analista Programador',
-                'duracion_semestres': 5,
+                'duraciones': ['5 semestres'],
                 'url_malla': 'https://malla.duoc.cl/mallas/x/047.html',
                 'ofertas': [{
                     'sede': 'Maipú',
@@ -168,15 +196,53 @@ class CargaDuocTests(TestCase):
         self.assertEqual(OfertaAcademica.objects.filter(institucion=duoc).count(), 1)
         self.assertEqual(OfertaAcademica.objects.filter(institucion=inacap).count(), 1)
 
-    def test_no_inventa_arancel_anual(self):
+    def test_sin_cuotas_no_inventa_semestral_ni_anual(self):
+        cargar_items(self.items, obtener_institucion(), cuotas_por_semestre=0)
+        oferta = OfertaAcademica.objects.first()
+        self.assertEqual(oferta.arancel_mensual_clp, Decimal('322000'))
+        self.assertIsNone(oferta.arancel_semestral_clp)
+        self.assertIsNone(oferta.arancel_anual_clp)
+        self.assertFalse(oferta.aranceles_calculados)
+
+    def test_calcula_semestral_y_anual_con_cinco_cuotas(self):
+        # Resolución Duoc: arancel semestral en 5 cuotas mensuales; la matrícula publicada es semestral
         cargar_items(self.items, obtener_institucion())
         oferta = OfertaAcademica.objects.first()
         self.assertEqual(oferta.arancel_mensual_clp, Decimal('322000'))
-        self.assertIsNone(oferta.arancel_anual_clp)
+        self.assertEqual(oferta.arancel_semestral_clp, Decimal('1610000'))
+        self.assertEqual(oferta.arancel_anual_clp, Decimal('3220000'))
+        self.assertTrue(oferta.aranceles_calculados)
+        self.assertEqual(oferta.matricula_periodo, 'semestral')
 
-    def test_calcula_anual_con_cuotas_indicadas(self):
-        cargar_items(self.items, obtener_institucion(), cuotas_anuales=10)
-        self.assertEqual(OfertaAcademica.objects.first().arancel_anual_clp, Decimal('3220000'))
+    def test_lote_antiguo_con_duracion_semestres_sigue_cargando(self):
+        item = self.items[1]
+        item.pop('duraciones')
+        item['duracion_semestres'] = 5
+        cargar_items(self.items, obtener_institucion())
+        self.assertEqual(Carrera.objects.get().duracion_semestres, 5)
+        self.assertEqual(OfertaAcademica.objects.first().duracion_meses, 30)
+
+    def test_carrera_solo_online_en_bimestres(self):
+        self.items[1].update(nombre='Desarrollo de Aplicaciones', duraciones=['10 bimestres'])
+        self.items[1]['ofertas'][0].update(sede='Duoc Online', jornadas=['100% online'])
+        cargar_items(self.items, obtener_institucion())
+        carrera = Carrera.objects.get()
+        self.assertIsNone(carrera.duracion_semestres)  # antes quedaba como 10 semestres (5 años)
+        self.assertEqual(carrera.duracion_texto, '10 bimestres')
+        self.assertEqual(carrera.nivel_formacion, NIVEL_TECNICO)  # 20 meses
+        oferta = OfertaAcademica.objects.get()
+        self.assertEqual((oferta.duracion_texto, oferta.duracion_meses), ('10 bimestres', 20))
+
+    def test_carrera_mixta_usa_la_duracion_de_cada_modalidad(self):
+        self.items[1].update(nombre='Ingeniería en Marketing Digital',
+                             duraciones=['8 semestres (Presencial)', '16 bimestres (Online)'])
+        self.items[1]['ofertas'].append({'sede': 'Duoc Online', 'jornadas': ['100% online'],
+                                         'matricula_clp': 138000, 'arancel_mensual_clp': 280000})
+        cargar_items(self.items, obtener_institucion())
+        self.assertEqual(Carrera.objects.get().duracion_semestres, 8)
+        por_modalidad = {o.jornada.modalidad: (o.duracion_texto, o.duracion_meses) for o in OfertaAcademica.objects.all()}
+        self.assertEqual(por_modalidad['Presencial'], ('8 semestres', 48))
+        self.assertEqual(por_modalidad['Online'], ('16 bimestres', 32))
 
     def test_no_mezcla_sedes_entre_instituciones(self):
         inacap = Institucion.objects.create(codigo='INACAP', nombre='INACAP')

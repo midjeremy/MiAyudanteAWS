@@ -28,7 +28,8 @@ class Carrera(models.Model):
     institucion = models.ForeignKey(Institucion, on_delete=models.CASCADE, null=True, blank=True)
     nombre_carrera = models.CharField(max_length=200)
     nivel_formacion = models.CharField(max_length=50, blank=True, null=True)
-    duracion_semestres = models.IntegerField(blank=True, null=True)
+    duracion_semestres = models.IntegerField(blank=True, null=True)  # solo si se publica en semestres
+    duracion_texto = models.CharField(max_length=200, blank=True, default='')  # tal como la publica la institución
     titulo_otorgado = models.CharField(max_length=255, blank=True, null=True)
     s3_url_malla_pdf = models.TextField(blank=True, null=True)
     url_malla = models.URLField(max_length=500, blank=True, null=True)
@@ -63,6 +64,13 @@ class OfertaAcademica(models.Model):
     arancel_mensual_clp = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True)
     arancel_semestral_clp = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True)
     matricula_clp = models.DecimalField(max_digits=12, decimal_places=2, blank=True, null=True)
+    # Período de la matrícula publicada ('semestral' o 'anual'); vacío si la fuente no lo indica
+    matricula_periodo = models.CharField(max_length=10, blank=True, default='')
+    # True si el arancel semestral/anual se calculó desde la cuota mensual publicada (valor referencial)
+    aranceles_calculados = models.BooleanField(default=False)
+    # Duración de esta modalidad: una misma carrera puede durar 8 semestres presencial y 16 bimestres online
+    duracion_texto = models.CharField(max_length=60, blank=True, default='')
+    duracion_meses = models.PositiveSmallIntegerField(blank=True, null=True)
     actualizado_en = models.DateTimeField(auto_now=True)
 
     def __str__(self):

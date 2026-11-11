@@ -22,6 +22,12 @@ FILTROS_CATALOGO = [
 ArancelSerializer = inline_serializer('Arancel', {
     'monto': serializers.IntegerField(),
     'periodo': serializers.ChoiceField(choices=['anual', 'semestral', 'mensual']),
+    'calculado': serializers.BooleanField(help_text='Derivado de la cuota mensual publicada (referencial)'),
+}, allow_null=True)
+
+RangoMesesSerializer = inline_serializer('RangoMeses', {
+    'min': serializers.IntegerField(),
+    'max': serializers.IntegerField(),
 }, allow_null=True)
 
 CAMPOS_CARRERA = {
@@ -31,7 +37,9 @@ CAMPOS_CARRERA = {
     'institucion_codigo': serializers.CharField(),
     'nivel': serializers.CharField(allow_null=True),
     'titulo': serializers.CharField(allow_null=True),
-    'duracion_semestres': serializers.IntegerField(allow_null=True),
+    'duracion_semestres': serializers.IntegerField(allow_null=True, help_text='Solo si se publica en semestres'),
+    'duracion_texto': serializers.CharField(help_text='Tal como la publica la institución'),
+    'duracion_meses': RangoMesesSerializer,
     'malla_url': serializers.CharField(allow_null=True),
     'total_ofertas': serializers.IntegerField(),
     'total_sedes': serializers.IntegerField(),
