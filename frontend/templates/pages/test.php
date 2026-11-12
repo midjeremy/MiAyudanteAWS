@@ -2,7 +2,8 @@
 // Test vocacional Ikigai: 40 ítems validados por juicio de expertos, escala Likert de 1 a 5.
 // Las preguntas y el cálculo vienen de Django (/api/v1/ikigai/...). Si hay sesión, se envía
 // el JWT para que Django guarde el resultado del usuario.
-session_start();
+require_once __DIR__ . '/../sesion.php';
+requerir_sesion();
 require_once __DIR__ . '/../api.php';
 
 $usuario = $_SESSION['usuario'] ?? null;

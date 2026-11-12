@@ -2,7 +2,8 @@
 // ==========================================
 // INICIAR SESIÓN Y DATOS DE LA PÁGINA
 // ==========================================
-session_start();
+require_once __DIR__ . '/sesion.php';
+requerir_sesion();
 
 $funciones = [
     [
