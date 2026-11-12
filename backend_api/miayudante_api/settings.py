@@ -59,6 +59,7 @@ INSTALLED_APPS = [
     'scraper',
     'chatbot',
     'usuarios',
+    'Test_Ikigai',
 ]
 
 MIDDLEWARE = [
