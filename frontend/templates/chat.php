@@ -1,6 +1,8 @@
 <?php
 // Puente entre el widget del asistente y Django: Nginx no publica /api/chatbot/.
 require_once 'api.php';
+require_once 'sesion.php';
+requerir_sesion_json();
 
 // Debe ser mayor que TIEMPO_MAXIMO en chatbot/services.py (40 s) y menor que la espera de Nginx (60 s)
 const ESPERA_ASISTENTE = 50;

@@ -1,5 +1,6 @@
 <?php
-session_start();
+require_once __DIR__ . '/sesion.php';
+requerir_sesion();
 require_once 'api.php';
 require_once 'catalogo.php';
 
