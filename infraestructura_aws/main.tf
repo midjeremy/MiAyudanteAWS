@@ -72,8 +72,8 @@ resource "aws_instance" "web_server" {
               wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
               apt-get install -y ./google-chrome-stable_current_amd64.deb
 
-              # Entorno Python global
-              pip3 install django djangorestframework psycopg2-binary gunicorn pandas selenium
+              # Las dependencias de Python las instala el deploy en un venv (requirements.txt);
+              # Ubuntu 26.04 no permite pip3 install global (PEP 668).
 
               # PHP2Shell: no levantar PHP sin el parche (minimo 8.5.12)
               if ! php8.5 -r 'exit(version_compare(PHP_VERSION, "8.5.12", ">=") ? 0 : 1);'; then
@@ -94,17 +94,22 @@ resource "aws_eip" "web_eip" {
 }
 
 resource "aws_db_instance" "postgres_db" {
-  identifier             = "miayudante-db"
-  allocated_storage      = 20
-  engine                 = "postgres"
-  engine_version         = "15"
-  instance_class         = "db.t3.micro"
-  db_name                = "miayudantedb"
-  username               = "postgres"
-  password               = var.db_password
-  skip_final_snapshot    = true
-  publicly_accessible    = false
-  vpc_security_group_ids = [aws_security_group.sg_db.id]
+  identifier              = "miayudante-db"
+  allocated_storage       = 20
+  engine                  = "postgres"
+  engine_version          = "16"
+  instance_class          = "db.t3.micro"
+  storage_encrypted       = true                  # cifrado en reposo con la llave de AWS (SLA 05)
+  backup_retention_period = 7                     # respaldo automático diario, 7 días (SLA 03: RPO <= 24 h)
+  backup_window           = "07:00-08:00"         # madrugada en Chile (03:00 o 04:00 según horario)
+  maintenance_window      = "sun:08:30-sun:09:30" # después del respaldo
+  copy_tags_to_snapshot   = true
+  db_name                 = "miayudantedb"
+  username                = "postgres"
+  password                = var.db_password
+  skip_final_snapshot     = true
+  publicly_accessible     = false
+  vpc_security_group_ids  = [aws_security_group.sg_db.id]
 }
 
 data "aws_caller_identity" "current" {}
@@ -113,4 +118,12 @@ data "aws_caller_identity" "current" {}
 # El bucket se crea una vez a mano y Terraform solo lo consulta.
 data "aws_s3_bucket" "mallas_bucket" {
   bucket = "miayudante-static-${data.aws_caller_identity.current.account_id}"
+}
+
+# Versionamiento del bucket (SLA 03): un archivo borrado o pisado se puede recuperar
+resource "aws_s3_bucket_versioning" "mallas_versionado" {
+  bucket = data.aws_s3_bucket.mallas_bucket.id
+  versioning_configuration {
+    status = "Enabled"
+  }
 }

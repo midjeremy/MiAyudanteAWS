@@ -2,8 +2,8 @@
 // Puente entre el widget del asistente y Django: Nginx no publica /api/chatbot/.
 require_once 'api.php';
 
-// Debe ser mayor que el tiempo máximo de OpenAI en chatbot/services.py
-const ESPERA_ASISTENTE = 35;
+// Debe ser mayor que TIEMPO_MAXIMO en chatbot/services.py (40 s) y menor que la espera de Nginx (60 s)
+const ESPERA_ASISTENTE = 50;
 
 function responder(int $codigo, array $datos): void{
     http_response_code($codigo);

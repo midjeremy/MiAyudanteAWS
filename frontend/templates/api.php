@@ -2,9 +2,10 @@
 // Dirección de la API Django: ajusta la IP/URL por defecto si no estás en local
 define('API_BASE_URL', getenv('MIAYUDANTE_API_URL') ?: 'http://127.0.0.1:8000');
 
-function api_solicitud(string $metodo, string $ruta, ?array $datos = null, ?string $token = null): array{
+function api_solicitud(string $metodo, string $ruta, ?array $datos = null, ?string $token = null, int $espera = 5): array{
     $cabeceras = [
         'Accept: application/json',
+        // Django limita los intentos de login por IP: se envía la del visitante
         'X-Forwarded-For: ' . ($_SERVER['REMOTE_ADDR'] ?? ''),
     ];
     if ($datos !== null) {
@@ -17,7 +18,7 @@ function api_solicitud(string $metodo, string $ruta, ?array $datos = null, ?stri
     $ch = curl_init(API_BASE_URL . $ruta);
     curl_setopt_array($ch,[
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => 5,
+        CURLOPT_TIMEOUT => $espera,
         CURLOPT_CUSTOMREQUEST => $metodo,
         CURLOPT_HTTPHEADER => $cabeceras,
     ]);

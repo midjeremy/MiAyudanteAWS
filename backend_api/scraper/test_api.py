@@ -65,10 +65,10 @@ class ApiCatalogoTests(TestCase):
 
     def test_arancel_referencia_respeta_periodo_publicado(self):
         detalle = self.cliente.get(f'/api/v1/ofertas/{self.mensual.id}/').data
-        self.assertEqual(detalle['arancel_referencia'], {'monto': 322000, 'periodo': 'mensual'})
+        self.assertEqual(detalle['arancel_referencia'], {'monto': 322000, 'periodo': 'mensual', 'calculado': False})
         self.assertIsNone(detalle['valor_anual'])
         anual = self.cliente.get(f'/api/v1/ofertas/{self.semestral.id}/').data
-        self.assertEqual(anual['arancel_referencia'], {'monto': 3256000, 'periodo': 'anual'})
+        self.assertEqual(anual['arancel_referencia'], {'monto': 3256000, 'periodo': 'anual', 'calculado': False})
 
     def test_detalle_inexistente(self):
         self.assertEqual(self.cliente.get('/api/v1/ofertas/999999/').status_code, 404)

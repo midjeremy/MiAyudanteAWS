@@ -229,3 +229,7 @@ backend_api/staticfiles/
 *.tfvars
 *.tfvars.json
 crash.log
+
+# Llaves SSH (labsuser.pem del Learner Lab) y otras llaves privadas
+*.pem
+*.key

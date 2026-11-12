@@ -3,7 +3,7 @@ from django.core.management.base import BaseCommand
 from scrapy import signals
 from scrapy.crawler import CrawlerProcess
 
-from scraper.duoc.carga import MINIMO_CARRERAS, cargar_items, obtener_institucion, validar_items
+from scraper.duoc.carga import CUOTAS_POR_SEMESTRE, MINIMO_CARRERAS, cargar_items, obtener_institucion, validar_items
 from scraper.duoc.spider import DuocSpider
 from scraper.etl import TASA_MINIMA_EXITO, cerrar_lote, crear_cliente_s3, retirar_ofertas_obsoletas, subir_json_crudo, tasa_exito
 from scraper.models import LoteScrapingS3
@@ -14,7 +14,10 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument('--limite', type=int, help='Detiene el rastreo tras esta cantidad de páginas')
-        parser.add_argument('--cuotas-anuales', type=int, help='Calcula el arancel anual multiplicando el mensual por este valor')
+        parser.add_argument(
+            '--cuotas-semestre', type=int, default=CUOTAS_POR_SEMESTRE,
+            help='Cuotas mensuales del arancel semestral (Duoc publica una cuota; 0 = no calcular semestral ni anual)',
+        )
 
     def extraer(self, limite):
         items = []
@@ -79,7 +82,7 @@ class Command(BaseCommand):
             return
 
         try:
-            ids_vigentes = cargar_items(items, institucion, lote, kwargs['cuotas_anuales'])
+            ids_vigentes = cargar_items(items, institucion, lote, kwargs['cuotas_semestre'])
         except Exception as e:
             cerrar_lote(lote, 'ERROR', 0, total, errores=[*errores, f'Carga: {e}'])
             raise

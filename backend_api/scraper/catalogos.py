@@ -86,13 +86,73 @@ def normalizar_jornada(texto, nombre_sede=''):
     return texto.strip().capitalize(), None
 
 
-def clasificar_nivel(nombre_carrera, duracion_semestres):
+MESES_POR_UNIDAD = {'semestre': 6, 'bimestre': 2, 'trimestre': 3, 'ano': 12, 'mes': 1}
+NOMBRES_UNIDAD = {
+    'semestre': ('semestre', 'semestres'), 'bimestre': ('bimestre', 'bimestres'),
+    'trimestre': ('trimestre', 'trimestres'), 'ano': ('año', 'años'), 'mes': ('mes', 'meses'),
+}
+MAXIMO_MESES_TECNICO = 30  # 5 semestres: solo se usa cuando la duración no está en semestres
+
+
+def parsear_duraciones(textos):
+    """Interpreta las duraciones tal como las publica la institución.
+
+    '8 semestres (Presencial)' y '16 bimestres (Online)' -> una entrada por texto con su valor, unidad,
+    meses equivalentes y modalidad (None si el texto no la indica). Lo que no se entiende se descarta.
+    """
+    duraciones = []
+    for texto in textos or []:
+        limpio = re.sub(r'\s+', ' ', str(texto)).strip()
+        normalizado = normalizar_texto(limpio)
+        encontrado = re.search(r'(\d+)\s*(semestre|bimestre|trimestre|ano|mes)', normalizado)
+        if not encontrado:
+            continue
+        valor, unidad = int(encontrado.group(1)), encontrado.group(2)
+        if 'online' in normalizado:
+            modalidad = 'Online'
+        elif 'presencial' in normalizado:
+            modalidad = 'Presencial'
+        else:
+            modalidad = None
+        singular, plural = NOMBRES_UNIDAD[unidad]
+        duraciones.append({
+            'texto': limpio,
+            'valor': valor,
+            'unidad': unidad,
+            'meses': valor * MESES_POR_UNIDAD[unidad],
+            'modalidad': modalidad,
+            'resumen': f'{valor} {singular if valor == 1 else plural}',
+        })
+    return duraciones
+
+
+def elegir_duracion(duraciones, modalidad):
+    """La duración que corresponde a una modalidad: la que la nombra, o si no, la que no nombra ninguna."""
+    for criterio in (lambda d: d['modalidad'] == modalidad, lambda d: d['modalidad'] is None):
+        candidatas = [d for d in duraciones if criterio(d)]
+        if candidatas:
+            return candidatas[0]
+    return duraciones[0] if duraciones else None
+
+
+def semestres_publicados(duraciones):
+    """Semestres solo si la institución los publica así (nunca se convierten bimestres en semestres)."""
+    for modalidad in ('Presencial', None, 'Online'):
+        for duracion in duraciones:
+            if duracion['unidad'] == 'semestre' and duracion['modalidad'] == modalidad:
+                return duracion['valor']
+    return None
+
+
+def clasificar_nivel(nombre_carrera, duracion_semestres, duracion_meses=None):
     """Unifica el nivel a partir del nombre y, si no basta, de la duración."""
     nombre = normalizar_texto(nombre_carrera)
     if nombre.startswith('tecnico'):
         return NIVEL_TECNICO
     if nombre.startswith(('ingenieria', 'contador', 'licenciatura')):
         return NIVEL_PROFESIONAL
-    if not duracion_semestres:
-        return None
-    return NIVEL_TECNICO if duracion_semestres <= 6 else NIVEL_PROFESIONAL
+    if duracion_semestres:
+        return NIVEL_TECNICO if duracion_semestres <= 6 else NIVEL_PROFESIONAL
+    if duracion_meses:
+        return NIVEL_TECNICO if duracion_meses <= MAXIMO_MESES_TECNICO else NIVEL_PROFESIONAL
+    return None

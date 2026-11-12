@@ -1,5 +1,6 @@
 """API REST del catálogo para la capa BFF en PHP: filtra y pagina en el servidor."""
 from django.db.models import Q
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework.generics import ListAPIView, RetrieveAPIView
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import AllowAny
@@ -7,6 +8,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from scraper.catalogos import normalizar_texto
+from scraper.documentacion import FILTROS_CATALOGO, FiltrosSerializer
 from scraper.models import Institucion, Jornada, OfertaAcademica, Sede
 from scraper.serializers import OfertaSerializer
 
@@ -32,6 +34,8 @@ class OfertasBaseView:
     )
 
 
+@extend_schema_view(get=extend_schema(tags=['Catálogo'], summary='Ofertas académicas (carrera + sede + jornada)',
+                                      parameters=FILTROS_CATALOGO))
 class OfertaListView(OfertasBaseView, ListAPIView):
     """
     Filtros: q, institucion, sede, modalidad, region, nivel, carrera (contiene), excluir (no contiene),
@@ -72,6 +76,7 @@ class OfertaListView(OfertasBaseView, ListAPIView):
         return consulta
 
 
+@extend_schema_view(get=extend_schema(tags=['Catálogo'], summary='Detalle de una oferta académica'))
 class OfertaDetailView(OfertasBaseView, RetrieveAPIView):
     pass
 
@@ -80,6 +85,7 @@ class FiltrosView(APIView):
     """Opciones reales para los selects del buscador."""
     permission_classes = [AllowAny]
 
+    @extend_schema(tags=['Catálogo'], summary='Opciones de los filtros del buscador', responses=FiltrosSerializer)
     def get(self, request):
         sedes = {}
         for sede in Sede.objects.filter(ofertaacademica__isnull=False).distinct().order_by('nombre_sede'):
