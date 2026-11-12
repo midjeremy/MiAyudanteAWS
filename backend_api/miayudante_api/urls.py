@@ -19,7 +19,7 @@ from django.urls import path, include
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 from scraper import api, api_carreras, salud, views
-from Test_Ikigai.views import EvaluarIkigaiView
+from Test_Ikigai.views import PreguntasIkigaiView, ResultadoIkigaiView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -35,7 +35,9 @@ urlpatterns = [
     path('api/v1/carreras/', api_carreras.CarreraListView.as_view(), name='api_carreras'),
     path('api/v1/carreras/<int:pk>/', api_carreras.CarreraDetailView.as_view(), name='api_carrera_detalle'),
     path('api/v1/filtros/', api.FiltrosView.as_view(), name='api_filtros'),
-    path('api/ikigai/evaluar/', EvaluarIkigaiView.as_view(), name='evaluar-ikigai'), #view para probar si fuciona el calculo del test ikigai
+    # Test vocacional Ikigai: preguntas validadas por juicio de expertos y cálculo del resultado
+    path('api/v1/ikigai/preguntas/', PreguntasIkigaiView.as_view(), name='ikigai_preguntas'),
+    path('api/v1/ikigai/resultado/', ResultadoIkigaiView.as_view(), name='ikigai_resultado'),
     path('', include('chatbot.urls')),
     path('', include('usuarios.urls')),
 ]
