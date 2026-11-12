@@ -537,10 +537,47 @@ a {
 /* Metadatos (Ubicación, Modalidad, Duración) */
 .career-meta {
     display: flex;
-    gap: 20px;
+    gap: 16px;
     font-size: 13px;
     color: var(--text-gray);
     flex-wrap: wrap;
+    align-items: center;
+}
+
+/* Indicador de cantidad total de sedes */
+.badge-sedes-count {
+    font-weight: 600;
+    color: var(--brand-purple);
+    background: var(--brand-purple-light);
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* Selector desplegable de Sede y Región */
+.sede-region-select {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--bg-main);
+    border: 1px solid var(--border-color);
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 13px;
+    color: var(--text-gray);
+}
+
+.sede-region-select select {
+    border: none;
+    background: transparent;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-dark);
+    cursor: pointer;
+    outline: none;
 }
 
 /* Contenido Derecho (Arancel y Detalles) */

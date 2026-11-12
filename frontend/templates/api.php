@@ -1,6 +1,7 @@
 <?php
 // Dirección de la API Django: ajusta la IP/URL por defecto si no estás en local
-define('API_BASE_URL', getenv('MIAYUDANTE_API_URL') ?: 'http://44.196.193.153');
+// Usar el dominio HTTPS: la IP por HTTP responde 301 hacia https://mi-ayudante.cl y cURL no lo sigue
+define('API_BASE_URL', getenv('MIAYUDANTE_API_URL') ?: 'https://mi-ayudante.cl');
 
 function api_solicitud(string $metodo, string $ruta, ?array $datos = null, ?string $token = null): array{
     $cabeceras = [
@@ -26,6 +27,10 @@ function api_solicitud(string $metodo, string $ruta, ?array $datos = null, ?stri
     }
     $respuesta = curl_exec($ch);
     $codigo = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    if ($respuesta === false) {
+        // Deja el motivo real en el log de PHP (DNS, TLS, timeout...) en vez de fallar en silencio
+        error_log('api_solicitud ' . $metodo . ' ' . $ruta . ': ' . curl_error($ch));
+    }
 
     return [
         'codigo' => $codigo,

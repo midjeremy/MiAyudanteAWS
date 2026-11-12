@@ -28,7 +28,6 @@ if (!empty($ids_seleccionados)) {
         }
 
         $inst_clave = strtolower($row['institucion_codigo'] ?? '');
-        $semestres = (int) ($row['duracion_semestres'] ?? 0);
         $arancel = arancel_de_oferta($row);
 
         $carreras_por_id[$row['id']] = [
@@ -41,8 +40,9 @@ if (!empty($ids_seleccionados)) {
             'logo_class' => ($inst_clave === 'duoc') ? 'duoc-logo' : 'square-logo',
             'arancel' => $arancel['monto'],
             'arancel_periodo' => $arancel['periodo'],
-            'duracion_anos' => $semestres ? round($semestres / 2, 1) : '-',
-            'duracion_semestres' => $semestres ?: '-',
+            // NUEVO: años desde los meses de la API y la duración tal como la publica la institución
+            'duracion_anos' => duracion_de_oferta($row),
+            'duracion_publicada' => ($row['duracion_texto'] ?? '') ?: '-',
             'titulo' => $row['titulo'] ?? 'No informado',
             'tipo_titulo' => $row['nivel'] ?? 'No informado',
             'modalidad' => $row['modalidad'] ?? 'No informada',
@@ -85,6 +85,8 @@ $carrera2 = $carreras_seleccionadas[1] ?? null;
     <title>Comparar Carreras - Mi Ayudante</title>
     <link rel="stylesheet" href="/static/css/comparar.css">
     <link rel="stylesheet" href="/static/css/responsive.css">
+    <link rel="stylesheet" href="/static/css/chat.css">
+    <script src="/static/js/chat.js" defer></script>
 </head>
 <body class="app-body">
 
@@ -117,7 +119,7 @@ $carrera2 = $carreras_seleccionadas[1] ?? null;
                 </summary>
                 
                 <div class="user-dropdown">
-                    <a href="pages/perfil.php" class="dropdown-item">Perfil</a>
+                    <a href="perfil.php" class="dropdown-item">Perfil</a>
                     <div class="dropdown-divider"></div>
                     <a href="logout.php" class="dropdown-item logout-item">Cerrar sesión</a>
                 </div>
@@ -255,12 +257,12 @@ $carrera2 = $carreras_seleccionadas[1] ?? null;
                             </div>
                         </div>
                         <div class="feature-value">
-                            <strong><?= $carrera1['duracion_anos'] ?> años</strong>
-                            <span><?= $carrera1['duracion_semestres'] ?> semestres</span>
+                            <strong><?= htmlspecialchars($carrera1['duracion_anos']) ?></strong>
+                            <span><?= htmlspecialchars($carrera1['duracion_publicada']) ?></span>
                         </div>
                         <div class="feature-value">
-                            <strong><?= $carrera2['duracion_anos'] ?> años</strong>
-                            <span><?= $carrera2['duracion_semestres'] ?> semestres</span>
+                            <strong><?= htmlspecialchars($carrera2['duracion_anos']) ?></strong>
+                            <span><?= htmlspecialchars($carrera2['duracion_publicada']) ?></span>
                         </div>
                     </div>
 
@@ -381,10 +383,10 @@ $carrera2 = $carreras_seleccionadas[1] ?? null;
                 </div>
             </div>
 
-            <div class="ai-chat-footer">
-                <input type="text" placeholder="Escribe tu duda aquí...">
-                <button type="button">➤</button>
-            </div>
+            <form class="ai-chat-footer">
+                <input type="text" placeholder="Escribe tu duda aquí..." aria-label="Escribe tu duda" maxlength="500" autocomplete="off" required>
+                <button type="submit" aria-label="Enviar mensaje">➤</button>
+            </form>
         </div>
     </details>
 
