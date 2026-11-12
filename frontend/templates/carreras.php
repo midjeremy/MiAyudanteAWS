@@ -120,7 +120,7 @@ function enlace_pagina(int $numero): string{
                 </summary>
                 
                 <div class="user-dropdown">
-                    <a href="pages/perfil.php" class="dropdown-item">Perfil</a>
+                    <a href="perfil.php" class="dropdown-item">Perfil</a>
                     <div class="dropdown-divider"></div>
                     <a href="logout.php" class="dropdown-item logout-item">Cerrar sesión</a>
                 </div>
@@ -326,4 +326,4 @@ function enlace_pagina(int $numero): string{
     </details>
 
 </body>
-</html>
+</html

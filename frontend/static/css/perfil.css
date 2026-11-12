@@ -1,0 +1,313 @@
+/* =================================================================
+   ESTILOS DE LA VISTA DE PERFIL - MI AYUDANTE
+   ================================================================= */
+
+/* Variables de color globales de la plataforma */
+:root {
+    --primary: #6366f1;
+    --primary-hover: #4f46e5;
+    --primary-light: #eef2ff;
+    --text-main: #1f2937;
+    --text-muted: #6b7280;
+    --bg-body: #f8fafc;
+    --bg-card: #ffffff;
+    --border-color: #e5e7eb;
+    --radius-lg: 16px;
+    --radius-md: 10px;
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+}
+
+/* Cuerpo y contenedor principal */
+body.portal-body {
+    background-color: var(--bg-body);
+    color: var(--text-main);
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    margin: 0;
+    padding: 0;
+}
+
+.perfil-contenedor {
+    max-width: 1200px;
+    margin: 40px auto;
+    padding: 0 20px;
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 30px;
+    align-items: start;
+}
+
+@media (max-width: 900px) {
+    .perfil-contenedor {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Tarjetas base */
+.perfil-tarjeta {
+    background: var(--bg-card);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-color);
+    padding: 24px;
+    box-shadow: var(--shadow-sm);
+    margin-bottom: 24px;
+}
+
+/* Columna Lateral (Sidebar de Usuario) */
+.perfil-lateral .perfil-usuario {
+    text-align: center;
+}
+
+/* Avatar perfectamente centrado */
+.perfil-avatar {
+    width: 90px;
+    height: 90px;
+    margin: 0 auto 16px auto;
+    border-radius: 50%;
+    background: var(--primary-light);
+    color: var(--primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 32px;
+    font-weight: bold;
+    position: relative;
+    border: 3px solid var(--primary-light);
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+.perfil-avatar img {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
+    z-index: 2;
+}
+
+.perfil-lateral h1 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-main);
+    margin: 0 0 4px 0;
+}
+
+.perfil-tipo {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    margin-bottom: 20px;
+}
+
+/* Datos de perfil estructurados con <dl> */
+.perfil-datos {
+    text-align: left;
+    border-top: 1px solid var(--border-color);
+    padding-top: 16px;
+    margin-bottom: 20px;
+}
+
+.perfil-datos div {
+    margin-bottom: 12px;
+}
+
+.perfil-datos dt {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    margin-bottom: 2px;
+}
+
+.perfil-datos dd {
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: var(--text-main);
+    margin: 0;
+    word-break: break-word;
+}
+
+/* Botones de acción lateral */
+.btn-perfil {
+    display: block;
+    width: 100%;
+    padding: 10px 16px;
+    border-radius: var(--radius-md);
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-align: center;
+    text-decoration: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-sizing: border-box;
+    margin-bottom: 10px;
+    border: none;
+}
+
+.btn-secundario {
+    background-color: #f3f4f6;
+    color: var(--text-muted);
+    cursor: not-allowed;
+}
+
+.btn-primario {
+    background-color: var(--primary);
+    color: #ffffff;
+}
+
+.btn-primario:hover {
+    background-color: var(--primary-hover);
+}
+
+.btn-salir {
+    background-color: transparent;
+    color: #dc2626;
+    border: 1px solid #fee2e2;
+}
+
+.btn-salir:hover {
+    background-color: #fef2f2;
+}
+
+/* Columna Principal */
+.perfil-principal .perfil-titulo {
+    font-size: 1.75rem;
+    font-weight: 800;
+    color: var(--text-main);
+    margin-top: 0;
+    margin-bottom: 20px;
+}
+
+/* Pestañas de navegación interna */
+.perfil-pestanas {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 24px;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 12px;
+}
+
+.perfil-pestanas a {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    text-decoration: none;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    transition: all 0.2s;
+}
+
+.perfil-pestanas a:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+.perfil-pestanas a.activa {
+    background: var(--primary);
+    color: #ffffff;
+    border-color: var(--primary);
+}
+
+/* Bloque de Estadísticas Rápidas */
+.perfil-resumen {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.perfil-stat {
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+}
+
+.perfil-stat strong {
+    font-size: 2rem;
+    font-weight: 800;
+    color: var(--primary);
+    line-height: 1;
+    margin-bottom: 6px;
+}
+
+.perfil-stat span {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+/* Cabeceras de tarjetas internas */
+.perfil-tarjeta-cabecera {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.perfil-tarjeta-cabecera h3 {
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin: 0;
+}
+
+.enlace-ver {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--primary);
+    text-decoration: none;
+}
+
+.enlace-ver:hover {
+    text-decoration: underline;
+}
+
+/* Estados vacíos */
+.perfil-vacio {
+    text-align: center;
+    padding: 20px 0;
+}
+
+.perfil-vacio p {
+    color: var(--text-muted);
+    font-size: 0.95rem;
+    margin-bottom: 16px;
+}
+
+/* Lista de Carreras Guardadas en el perfil */
+.perfil-guardadas {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.perfil-guardadas li {
+    padding: 12px 16px;
+    background: #f9fafb;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.perfil-guardadas li strong {
+    font-size: 0.95rem;
+    color: var(--text-main);
+}
+
+.perfil-guardadas li small {
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}

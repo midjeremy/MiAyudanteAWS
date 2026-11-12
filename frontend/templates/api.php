@@ -28,6 +28,10 @@ function api_solicitud(string $metodo, string $ruta, ?array $datos = null, ?stri
     }
     $respuesta = curl_exec($ch);
     $codigo = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    if ($respuesta === false) {
+        // Deja el motivo real en el log de PHP (DNS, TLS, timeout...) en vez de fallar en silencio
+        error_log('api_solicitud ' . $metodo . ' ' . $ruta . ': ' . curl_error($ch));
+    }
 
     return [
         'codigo' => $codigo,
