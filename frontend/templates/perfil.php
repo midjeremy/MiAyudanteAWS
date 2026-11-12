@@ -25,9 +25,6 @@ $ciudad = $usuario['ciudad'] ?? 'No especificada';
 $institucion = $usuario['institucion'] ?? 'No especificada';
 $avatar = !empty($usuario['avatar']) ? $usuario['avatar'] : '/static/img/gato-avatar.png';
 
-// Iniciales para mostrar si la imagen del avatar no carga
-$iniciales = mb_strtoupper(mb_substr($nombre ?: $nombreCompleto, 0, 1) . mb_substr($apellidos, 0, 1));
-
 // Carreras guardadas reales (las mismas que se ven en guardados.php)
 $ids_guardados = $_SESSION['favoritos'] ?? [];
 $carreras_guardadas = [];
@@ -95,7 +92,6 @@ $guardadas_vista = array_slice($carreras_guardadas, 0, 4);
                 <div class="perfil-avatar">
                     <img src="<?= htmlspecialchars($avatar) ?>" alt="Avatar de <?= htmlspecialchars($nombreCompleto) ?>"
                          onerror="this.remove()">
-                    <span aria-hidden="true"><?= htmlspecialchars($iniciales ?: '?') ?></span>
                 </div>
                 <h1><?= htmlspecialchars($nombreCompleto) ?></h1>
                 <p class="perfil-tipo"><?= htmlspecialchars($tipoEstudiante) ?></p>
