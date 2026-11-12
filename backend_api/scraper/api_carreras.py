@@ -1,11 +1,13 @@
 """Catálogo agrupado por carrera: una tarjeta por carrera, sin repetirla por cada sede o jornada."""
-from django.db.models import Count, Min
+from django.db.models import Count, Max, Min, Q
 from django.shortcuts import get_object_or_404
+from drf_spectacular.utils import extend_schema
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from scraper.api import OfertaListView, PaginacionCatalogo
+from scraper.documentacion import FILTROS_CATALOGO, CarreraDetalleSerializer, CarreraPaginadaSerializer
 from scraper.models import Carrera
 from scraper.serializers import OfertaSerializer
 
@@ -19,15 +21,30 @@ def ofertas_filtradas(request):
 
 
 def arancel_desde(resumen):
-    """Arancel más bajo de la carrera, con el período que publica la institución."""
+    """Arancel más bajo de la carrera, anual si existe para comparar entre instituciones.
+
+    'calculado' indica que el monto se derivó de la cuota mensual publicada (valor referencial).
+    """
     for periodo in ('anual', 'semestral', 'mensual'):
         monto = resumen.get(f'min_{periodo}')
         if monto is not None:
-            return {'monto': int(monto), 'periodo': periodo}
+            calculado = bool(resumen.get('total_calculados')) and periodo != 'mensual'
+            return {'monto': int(monto), 'periodo': periodo, 'calculado': calculado}
     return None
 
 
+def duracion_carrera(carrera, resumen):
+    """Duración publicada y rango en meses (puede variar por modalidad: presencial u online)."""
+    semestres = carrera.duracion_semestres
+    minimo, maximo = resumen.get('min_meses'), resumen.get('max_meses')
+    if minimo is None and semestres:
+        minimo = maximo = semestres * 6
+    texto = carrera.duracion_texto or (f'{semestres} semestres' if semestres else '')
+    return texto, {'min': minimo, 'max': maximo} if minimo is not None else None
+
+
 def datos_carrera(carrera, resumen, detalle):
+    duracion_texto, duracion_meses = duracion_carrera(carrera, resumen)
     return {
         'id': carrera.id,
         'carrera': carrera.nombre_carrera,
@@ -36,6 +53,8 @@ def datos_carrera(carrera, resumen, detalle):
         'nivel': carrera.nivel_formacion,
         'titulo': carrera.titulo_otorgado,
         'duracion_semestres': carrera.duracion_semestres,
+        'duracion_texto': duracion_texto,
+        'duracion_meses': duracion_meses,
         'malla_url': carrera.url_malla,
         'total_ofertas': resumen.get('total_ofertas', 0),
         'total_sedes': resumen.get('total_sedes', 0),
@@ -57,6 +76,9 @@ def resumir(ofertas, ids_carrera):
             min_anual=Min('arancel_anual_clp'),
             min_semestral=Min('arancel_semestral_clp'),
             min_mensual=Min('arancel_mensual_clp'),
+            total_calculados=Count('id', filter=Q(aranceles_calculados=True)),
+            min_meses=Min('duracion_meses'),
+            max_meses=Max('duracion_meses'),
         )
     }
     detalles = {i: {'sedes': set(), 'regiones': set(), 'modalidades': set()} for i in ids_carrera}
@@ -76,6 +98,8 @@ class CarreraListView(APIView):
     """GET /api/v1/carreras/: mismos filtros que /api/v1/ofertas/, pero una fila por carrera."""
     permission_classes = [AllowAny]
 
+    @extend_schema(tags=['Catálogo'], summary='Carreras agrupadas (una fila por carrera)', operation_id='carreras_listar',
+                   parameters=FILTROS_CATALOGO, responses=CarreraPaginadaSerializer)
     def get(self, request):
         ofertas = ofertas_filtradas(request)
         carreras = (
@@ -96,6 +120,8 @@ class CarreraDetailView(APIView):
     """GET /api/v1/carreras/<id>/: la carrera con todas sus ofertas (sedes, jornadas y aranceles)."""
     permission_classes = [AllowAny]
 
+    @extend_schema(tags=['Catálogo'], summary='Detalle de una carrera con todas sus ofertas',
+                   responses=CarreraDetalleSerializer)
     def get(self, request, pk):
         carrera = get_object_or_404(Carrera.objects.select_related('institucion'), pk=pk)
         ofertas = OfertaListView.queryset.filter(carrera=carrera)
