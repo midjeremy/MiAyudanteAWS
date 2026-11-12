@@ -26,10 +26,13 @@ jobs:
     steps:
       - name: Ejecutar despliegue vía SSH
         uses: appleboy/ssh-action@v1.2.0
+        env:
+          DOMINIO: ${{ vars.DOMINIO }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
+          envs: DOMINIO
           script: |
             set -e
 
@@ -48,8 +51,11 @@ jobs:
 
             # Actualizar configuración de Gunicorn, Nginx y cron
             sudo cp infraestructura_aws/servidor/gunicorn.service /etc/systemd/system/gunicorn.service
+            # La versión HTTP queda puesta hasta comprobar el certificado (sección HTTPS más abajo)
+            sudo install -m 644 infraestructura_aws/servidor/nginx-miayudante-app.conf /etc/nginx/snippets/miayudante-app.conf
             sudo cp infraestructura_aws/servidor/nginx-miayudante.conf /etc/nginx/sites-available/miayudante
             sudo install -m 644 infraestructura_aws/servidor/miayudante-scraper /etc/cron.d/miayudante-scraper
+            sudo install -m 644 infraestructura_aws/servidor/miayudante-monitor /etc/cron.d/miayudante-monitor
             sudo ln -sf /etc/nginx/sites-available/miayudante /etc/nginx/sites-enabled/miayudante
             sudo rm -f /etc/nginx/sites-enabled/default
             chmod o+x /home/ubuntu
@@ -77,6 +83,50 @@ jobs:
             if ! php8.5 -r 'exit(version_compare(PHP_VERSION, "8.5.12", ">=") ? 0 : 1);'; then
               echo "ERROR: PHP anterior a 8.5.12, despliegue cancelado"
               exit 1
+            fi
+
+            # HTTPS con Let's Encrypt. El dominio se define en GitHub:
+            # Settings > Secrets and variables > Actions > Variables > DOMINIO (ej. miayudante.cl)
+            # Sin DOMINIO, o si el certificado falla, el sitio sigue funcionando por HTTP.
+            DOMINIO=$(printf '%s' "${DOMINIO:-}" | tr 'A-Z' 'a-z')
+            RAIZ=/home/ubuntu/MiAyudanteAWS
+            if echo "$DOMINIO" | grep -Eq '^([a-z0-9-]+\.)+[a-z]{2,}$'; then
+              command -v certbot >/dev/null || apt_con_reintentos install -y certbot
+              sudo mkdir -p /var/www/certbot
+
+              # Django acepta el dominio (lo lee del .env de la raíz)
+              if grep -q '^DOMINIO=' "$RAIZ/.env" 2>/dev/null; then
+                sed -i "s/^DOMINIO=.*/DOMINIO=$DOMINIO/" "$RAIZ/.env"
+              else
+                printf '\nDOMINIO=%s\n' "$DOMINIO" >> "$RAIZ/.env"
+              fi
+
+              # www solo si también apunta a este servidor
+              NOMBRES="$DOMINIO"
+              IP_SERVIDOR=$(curl -s -m 5 https://checkip.amazonaws.com || true)
+              if [ -n "$IP_SERVIDOR" ] && getent ahostsv4 "www.$DOMINIO" | grep -q "$IP_SERVIDOR"; then
+                NOMBRES="$DOMINIO www.$DOMINIO"
+              fi
+              ARGS_CERTBOT=""
+              for NOMBRE in $NOMBRES; do ARGS_CERTBOT="$ARGS_CERTBOT -d $NOMBRE"; done
+
+              # Nginx en HTTP para que Let's Encrypt pueda validar el dominio
+              sudo nginx -t && sudo systemctl reload nginx
+              # --expand agrega www si se configuró después; la renovación es automática (certbot.timer)
+              if sudo certbot certonly --webroot -w /var/www/certbot $ARGS_CERTBOT \
+                   --cert-name "$DOMINIO" --expand --non-interactive --agree-tos \
+                   --register-unsafely-without-email --keep-until-expiring \
+                   --deploy-hook "systemctl reload nginx"; then
+                sed -e "s/__DOMINIOS__/$NOMBRES/" -e "s/__CERTIFICADO__/$DOMINIO/g" \
+                  "$RAIZ/infraestructura_aws/servidor/nginx-miayudante-https.conf" \
+                  | sudo tee /etc/nginx/sites-available/miayudante >/dev/null
+                echo "HTTPS activo en: $NOMBRES"
+              else
+                echo "AVISO: no se pudo obtener el certificado; el sitio sigue en HTTP."
+                echo "Revisa que el registro DNS A de $DOMINIO apunte a la IP elástica."
+              fi
+            else
+              echo "Sin variable DOMINIO válida: el sitio queda en HTTP."
             fi
 
             # Reiniciar servicios
