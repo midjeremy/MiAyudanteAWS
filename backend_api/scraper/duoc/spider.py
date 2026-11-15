@@ -1,4 +1,5 @@
 import re
+from urllib.parse import urlsplit
 
 from scrapy import Request
 from scrapy.spiders import SitemapSpider
@@ -14,6 +15,11 @@ def extraer_jornadas(texto):
     valor = (texto or '').split(':', 1)[-1]
     partes = re.split(r'\s*(?:,|/|\sy\s)\s*', valor.strip())
     return [parte.strip() for parte in partes if parte.strip()]
+
+
+def ruta_carrera(url):
+    """Clave para cruzar una carrera con su escuela: la ruta sin dominio ni barra final."""
+    return urlsplit(url or '').path.rstrip('/').lower()
 
 
 def normalizar_nombre_sede(texto):
@@ -41,6 +47,11 @@ class DuocSpider(SitemapSpider):
     }
 
     def parse_carrera(self, response):
+        # El menú de cada carrera enlaza a las escuelas; Scrapy descarta las URL ya visitadas
+        for href in set(response.css('a[href*="/escuela/"]::attr(href)').getall()):
+            if re.search(r'/escuela/[^/]+/?$', href):
+                yield response.follow(href, callback=self.parse_escuela)
+
         nombre = (response.css('h1::text').get() or '').strip()
         # Todas las líneas: algunas carreras publican '8 semestres (Presencial)' y '16 bimestres (Online)'
         duraciones = [
@@ -89,6 +100,20 @@ class DuocSpider(SitemapSpider):
     def malla_fallida(self, failure):
         self.logger.warning('No se pudo descargar la malla %s', failure.request.url)
         yield failure.request.cb_kwargs['item']
+
+    def parse_escuela(self, response):
+        """Escuela y las carreras que lista: así se sabe el área de cada carrera."""
+        carreras = {
+            ruta_carrera(response.urljoin(href))
+            for href in response.css('a[href*="/carreras/"]::attr(href)').getall()
+            if re.search(r'/carreras/[^/]+/?$', href)
+        }
+        yield {
+            'tipo': 'escuela',
+            'url': response.url,
+            'nombre': ' '.join((response.css('h1::text').get() or '').split()),
+            'carreras': sorted(carreras),
+        }
 
     def parse_sede(self, response):
         direccion = response.xpath('//b[contains(., "Dirección:")]/following-sibling::text()[1]').get()

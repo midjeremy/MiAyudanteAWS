@@ -7,7 +7,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from scraper.catalogos import normalizar_texto
+from scraper.catalogos import AREAS_ESTUDIO, normalizar_texto
 from scraper.documentacion import FILTROS_CATALOGO, FiltrosSerializer
 from scraper.models import Institucion, Jornada, OfertaAcademica, Sede
 from scraper.serializers import OfertaSerializer
@@ -38,7 +38,8 @@ class OfertasBaseView:
                                       parameters=FILTROS_CATALOGO))
 class OfertaListView(OfertasBaseView, ListAPIView):
     """
-    Filtros: q, institucion, sede, modalidad, region, nivel, carrera (contiene), excluir (no contiene),
+    Filtros: q, institucion, sede, modalidad, region, nivel, area (clave del test Ikigai, una o varias separadas
+    por coma), carrera (contiene), excluir (no contiene),
     carrera_id (todas las ofertas de una carrera)
     e ids (lista separada por comas, para comparar o mostrar guardados).
     """
@@ -69,6 +70,9 @@ class OfertaListView(OfertasBaseView, ListAPIView):
             consulta = consulta.filter(sede__region__iexact=region)
         if nivel := parametros.get('nivel'):
             consulta = consulta.filter(carrera__nivel_formacion__iexact=nivel)
+        if area := parametros.get('area', '').strip():
+            claves = [clave.strip().lower() for clave in area.split(',') if clave.strip()]
+            consulta = consulta.filter(carrera__area_estudio__in=claves)
         if carrera := parametros.get('carrera', '').strip():
             consulta = consulta.filter(carrera__nombre_carrera__icontains=carrera)
         if excluir := parametros.get('excluir', '').strip():
@@ -103,4 +107,9 @@ class FiltrosView(APIView):
             'modalidades': distintos(Jornada.objects.filter(ofertaacademica__isnull=False), 'modalidad'),
             'regiones': distintos(Sede.objects.filter(ofertaacademica__isnull=False), 'region'),
             'niveles': distintos(OfertaAcademica.objects.all(), 'carrera__nivel_formacion'),
+            'areas': [
+                {'clave': clave, 'nombre': AREAS_ESTUDIO[clave]}
+                for clave in AREAS_ESTUDIO
+                if clave in set(OfertaAcademica.objects.values_list('carrera__area_estudio', flat=True).distinct())
+            ],
         })
