@@ -158,6 +158,16 @@ class ConservacionTests(TestCase):
         self.admin = Usuario.objects.create_superuser('admin@correo.cl', 'admin@correo.cl', CLAVE)
         Usuario.objects.filter(pk=self.admin.pk).update(last_login=hace(40), date_joined=hace(40))
 
+    def test_el_login_registra_el_ultimo_acceso_y_salva_la_cuenta_de_la_purga(self):
+        # Encontrado en la prueba de punta a punta: el login JWT dejaba last_login en NULL
+        cache.clear()
+        Usuario.objects.filter(pk=self.nunca.pk).update(is_active=True)
+        respuesta = APIClient().post(LOGIN, {'correo': 'nunca@correo.cl', 'password': CLAVE}, format='json')
+        self.assertEqual(respuesta.status_code, 200)
+        self.nunca.refresh_from_db()
+        self.assertIsNotNone(self.nunca.last_login)
+        self.assertNotIn('nunca@correo.cl', cuentas_inactivas().values_list('email', flat=True))
+
     def test_selecciona_solo_cuentas_inactivas_que_no_son_del_equipo(self):
         self.assertEqual(set(cuentas_inactivas().values_list('email', flat=True)),
                          {'inactiva@correo.cl', 'nunca@correo.cl'})

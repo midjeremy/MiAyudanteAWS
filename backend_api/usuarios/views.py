@@ -1,4 +1,5 @@
 from django.contrib.auth import authenticate, get_user_model
+from django.contrib.auth.models import update_last_login
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
@@ -102,6 +103,10 @@ class LoginView(AuthThrottledView):
         if usuario is None:
             return Response({'error': 'Correo o contraseña incorrectos.'}, status=status.HTTP_401_UNAUTHORIZED)
 
+        # El login con JWT no pasa por django.contrib.auth.login(), así que last_login no se actualizaba
+        # solo. Hace falta para el plazo de conservación: sin esto, purgar_cuentas_inactivas borraría
+        # cuentas que sí se usan (Ley 21.719, proporcionalidad).
+        update_last_login(None, usuario)
         token = RefreshToken.for_user(usuario)
         return Response({
             'access': str(token.access_token),
