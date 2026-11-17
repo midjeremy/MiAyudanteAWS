@@ -6,7 +6,9 @@ from rest_framework.test import APIClient
 REGISTRO = '/api/v1/auth/registro/'
 LOGIN = '/api/v1/auth/login/'
 PERFIL = '/api/v1/auth/perfil/'
-DATOS = {'correo': 'Ana@Correo.cl', 'nombre': 'Ana', 'apellidos': 'Pérez', 'password': 'Clave-Segura-2026'}
+DATOS = {'correo': 'Ana@Correo.cl', 'nombre': 'Ana', 'apellidos': 'Pérez', 'password': 'Clave-Segura-2026',
+         # Ley 21.719: el registro exige consentimiento y la declaración de edad mínima
+         'acepta_privacidad': True, 'mayor_14': True}
 
 
 class AutenticacionTests(TestCase):

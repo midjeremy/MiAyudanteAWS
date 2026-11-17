@@ -42,6 +42,10 @@ DOMINIO = os.getenv('DOMINIO', '').strip().lower()
 if DOMINIO:
     ALLOWED_HOSTS += [DOMINIO, f'www.{DOMINIO}']
     CSRF_TRUSTED_ORIGINS = [f'https://{DOMINIO}', f'https://www.{DOMINIO}']
+    # Ley 21.719 (deber de seguridad): con HTTPS activo, las cookies de sesión y CSRF del admin solo
+    # viajan cifradas. Sin dominio (acceso por IP y HTTP) se dejan como están para no bloquear el admin.
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
 
 
 # Application definition
