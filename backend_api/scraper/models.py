@@ -7,6 +7,10 @@ class Institucion(models.Model):
     nombre = models.CharField(max_length=100)
     sitio_web = models.CharField(max_length=255, blank=True, null=True)
 
+    class Meta:
+        verbose_name = 'institución'
+        verbose_name_plural = 'instituciones'
+
     def __str__(self):
         return self.nombre
 
@@ -20,6 +24,10 @@ class LoteScrapingS3(models.Model):
     errores = models.IntegerField(default=0)
     tasa_exito = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
     detalle_errores = models.TextField(blank=True, default='')
+
+    class Meta:
+        verbose_name = 'lote del ETL'
+        verbose_name_plural = 'lotes del ETL'
 
     def __str__(self):
         return f"Lote {self.id} - {self.institucion.nombre}"
@@ -38,6 +46,10 @@ class Carrera(models.Model):
     # Área común con el test Ikigai (tecnologia, salud, economia, ...); vacío si no se pudo determinar
     area_estudio = models.CharField(max_length=20, blank=True, default='', db_index=True)
 
+    class Meta:
+        verbose_name = 'carrera'
+        verbose_name_plural = 'carreras'
+
     def __str__(self):
         return self.nombre_carrera
 
@@ -47,12 +59,20 @@ class Sede(models.Model):
     region = models.CharField(max_length=100, blank=True, null=True)
     direccion = models.CharField(max_length=255, blank=True, null=True)
 
+    class Meta:
+        verbose_name = 'sede'
+        verbose_name_plural = 'sedes'
+
     def __str__(self):
         return self.nombre_sede
 
 class Jornada(models.Model):
     tipo_jornada = models.CharField(max_length=50) # Ej: Diurna, Vespertina
     modalidad = models.CharField(max_length=50, blank=True, null=True) # Ej: Presencial, Online
+
+    class Meta:
+        verbose_name = 'jornada'
+        verbose_name_plural = 'jornadas'
 
     def __str__(self):
         return self.tipo_jornada
@@ -77,10 +97,19 @@ class OfertaAcademica(models.Model):
     duracion_meses = models.PositiveSmallIntegerField(blank=True, null=True)
     actualizado_en = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        verbose_name = 'oferta académica'
+        verbose_name_plural = 'ofertas académicas'
+
     def __str__(self):
         return f"{self.carrera} - {self.sede} ({self.jornada})"
 
-# --- MODELOS DE USUARIO Y RAG (Para la funcionalidad de Mi Ayudante) ---
+# --- MODELOS ANTIGUOS (sin uso) ---
+# Primer diseño del modelo de datos. La aplicación ya no los usa y sus tablas están vacías:
+#   - Usuario            -> el login usa el usuario de Django (get_user_model)
+#   - PreguntaIkigai, RespuestaUsuario, ResultadoVocacional -> Test_Ikigai.Pregunta y Test_Ikigai.Resultado
+#   - HistorialChatRag   -> el asistente no guarda el historial (lo conserva el navegador)
+# Se mantienen para no borrar tablas con una migración; no se muestran en el admin.
 
 class Usuario(models.Model):
     username = models.CharField(max_length=50, unique=True)

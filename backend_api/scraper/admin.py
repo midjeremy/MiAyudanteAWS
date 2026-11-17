@@ -1,12 +1,14 @@
 from django.contrib import admin
-from scraper.models import (
-    Institucion, LoteScrapingS3, Carrera, Sede, Jornada, OfertaAcademica,
-    Usuario, HistorialChatRag, PreguntaIkigai, RespuestaUsuario, ResultadoVocacional,
-)
+from scraper.models import Institucion, LoteScrapingS3, Carrera, Sede, Jornada, OfertaAcademica
 
 admin.site.site_header = 'Mi Ayudante · Administración'
 admin.site.site_title = 'Mi Ayudante'
-admin.site.index_title = 'Catálogo, ETL y test vocacional'
+admin.site.index_title = 'Catálogo, ETL, test vocacional y usuarios'
+
+# Los modelos antiguos de scraper (Usuario, PreguntaIkigai, RespuestaUsuario, ResultadoVocacional y
+# HistorialChatRag) no se registran: están vacíos y duplicaban secciones reales del admin.
+#   - Usuarios: "Autenticación y autorización" (usuario de Django, el que usa el login)
+#   - Preguntas y resultados del test: "Test vocacional Ikigai"
 
 
 # --- Catálogo -----------------------------------------------------------------
@@ -56,55 +58,14 @@ class OfertaAcademicaAdmin(admin.ModelAdmin):
 
 @admin.register(LoteScrapingS3)
 class LoteScrapingS3Admin(admin.ModelAdmin):
+    """Los lotes los crea el pipeline: se consultan (evidencia del KPI-01), no se crean ni editan a mano."""
     list_display = ('id', 'institucion', 'estado_etl', 'total_registros', 'total_ofertas', 'errores',
                     'tasa_exito', 'fecha_extraccion')
     list_filter = ('estado_etl', 'institucion')
-    readonly_fields = ('fecha_extraccion',)
+    list_select_related = ('institucion',)
     date_hierarchy = 'fecha_extraccion'
+    readonly_fields = ('institucion', 'estado_etl', 'fecha_extraccion', 'total_registros', 'total_ofertas',
+                       'errores', 'tasa_exito', 's3_url_json_raw', 'detalle_errores')
 
-
-# --- Test vocacional Ikigai ----------------------------------------------------
-
-@admin.register(PreguntaIkigai)
-class PreguntaIkigaiAdmin(admin.ModelAdmin):
-    list_display = ('id', 'dimension', 'enunciado')
-    list_filter = ('dimension',)
-    search_fields = ('enunciado',)
-
-
-@admin.register(RespuestaUsuario)
-class RespuestaUsuarioAdmin(admin.ModelAdmin):
-    list_display = ('id', 'usuario', 'pregunta', 'puntaje_obtenido')
-    list_filter = ('pregunta__dimension',)
-    list_select_related = ('usuario', 'pregunta')
-    raw_id_fields = ('usuario', 'pregunta')
-
-
-@admin.register(ResultadoVocacional)
-class ResultadoVocacionalAdmin(admin.ModelAdmin):
-    list_display = ('id', 'usuario', 'puntaje_pasion', 'puntaje_vocacion', 'puntaje_profesion',
-                    'puntaje_mision', 'fecha_realizacion')
-    list_select_related = ('usuario',)
-    readonly_fields = ('fecha_realizacion',)
-    date_hierarchy = 'fecha_realizacion'
-
-
-# --- Usuarios del modelo propio y chat ------------------------------------------
-# El login real usa los usuarios de Django (sección "Autenticación y autorización").
-# Estas tablas son del modelo de datos del informe; se muestran solo para consulta.
-
-@admin.register(Usuario)
-class UsuarioAdmin(admin.ModelAdmin):
-    list_display = ('id', 'username', 'email', 'rol')
-    list_filter = ('rol',)
-    search_fields = ('username', 'email')
-    exclude = ('password_hash',)  # nunca mostrar el hash de la contraseña
-
-
-@admin.register(HistorialChatRag)
-class HistorialChatRagAdmin(admin.ModelAdmin):
-    list_display = ('id', 'usuario', 'pregunta_usuario', 'creado_en')
-    search_fields = ('pregunta_usuario',)
-    list_select_related = ('usuario',)
-    readonly_fields = ('creado_en',)
-    date_hierarchy = 'creado_en'
+    def has_add_permission(self, request):
+        return False
