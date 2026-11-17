@@ -5,7 +5,10 @@ from scrapy.crawler import CrawlerProcess
 
 from scraper.duoc.carga import CUOTAS_POR_SEMESTRE, MINIMO_CARRERAS, cargar_items, obtener_institucion, validar_items
 from scraper.duoc.spider import DuocSpider
-from scraper.etl import TASA_MINIMA_EXITO, cerrar_lote, crear_cliente_s3, retirar_ofertas_obsoletas, subir_json_crudo, tasa_exito
+from scraper.etl import (
+    TASA_MINIMA_EXITO, cerrar_lote, cerrar_lotes_colgados, crear_cliente_s3, describir_error,
+    retirar_ofertas_obsoletas, subir_json_crudo, tasa_exito,
+)
 from scraper.models import LoteScrapingS3
 
 
@@ -62,6 +65,9 @@ class Command(BaseCommand):
         items = self.extraer(kwargs['limite'])
 
         institucion = obtener_institucion()
+        colgados = cerrar_lotes_colgados(institucion)
+        if colgados:
+            self.stdout.write(self.style.WARNING(f'[*] {colgados} lote(s) interrumpido(s) marcados como ERROR.'))
         lote = LoteScrapingS3.objects.create(institucion=institucion, estado_etl='EN_PROCESO')
         lote.s3_url_json_raw = self.respaldar_en_s3(items)
         lote.save(update_fields=['s3_url_json_raw'])
@@ -84,7 +90,7 @@ class Command(BaseCommand):
         try:
             ids_vigentes = cargar_items(items, institucion, lote, kwargs['cuotas_semestre'])
         except Exception as e:
-            cerrar_lote(lote, 'ERROR', 0, total, errores=[*errores, f'Carga: {e}'])
+            cerrar_lote(lote, 'ERROR', 0, total, errores=[*errores, f'Carga: {describir_error(e, 500)}'])
             raise
 
         retiradas = retirar_ofertas_obsoletas(institucion, ids_vigentes) if rastreo_completo else 0

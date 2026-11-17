@@ -1,13 +1,16 @@
 """Reglas comunes de control del pipeline: KPI-01, lotes y retiro de ofertas obsoletas."""
 import json
+from datetime import timedelta
 
 import boto3
 from django.conf import settings
 from django.utils import timezone
 
-from scraper.models import OfertaAcademica
+from scraper.models import LoteScrapingS3, OfertaAcademica
 
 TASA_MINIMA_EXITO = 95
+# Una carga completa de INACAP tarda cerca de una hora; un lote abierto por más tiempo quedó interrumpido
+HORAS_LOTE_COLGADO = 6
 
 
 def crear_cliente_s3():
@@ -45,6 +48,21 @@ def cerrar_lote(lote, estado, correctos, total, total_ofertas=0, errores=None):
     lote.tasa_exito = tasa_exito(correctos, total)
     lote.detalle_errores = '\n'.join(errores)[:5000]
     lote.save()
+
+
+def describir_error(error, largo=200):
+    """Tipo y primera línea del mensaje (Selenium agrega el stacktrace después), para detalle_errores."""
+    mensaje = (getattr(error, 'msg', None) or str(error)).strip().splitlines()
+    texto = f"{type(error).__name__}: {mensaje[0]}" if mensaje else type(error).__name__
+    return texto[:largo]
+
+
+def cerrar_lotes_colgados(institucion, horas=HORAS_LOTE_COLGADO):
+    """Marca como ERROR los lotes EN_PROCESO que un proceso interrumpido dejó sin cerrar."""
+    limite = timezone.now() - timedelta(hours=horas)
+    return LoteScrapingS3.objects.filter(
+        institucion=institucion, estado_etl='EN_PROCESO', fecha_extraccion__lt=limite,
+    ).update(estado_etl='ERROR', detalle_errores='Interrumpido: el proceso terminó sin cerrar el lote.')
 
 
 def retirar_ofertas_obsoletas(institucion, ids_vigentes):
