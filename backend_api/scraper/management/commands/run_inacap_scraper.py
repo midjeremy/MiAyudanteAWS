@@ -12,15 +12,32 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select
-from selenium.common.exceptions import TimeoutException, StaleElementReferenceException
+from selenium.common.exceptions import (
+    InvalidSessionIdException, NoSuchWindowException, StaleElementReferenceException, TimeoutException,
+    WebDriverException,
+)
 
 # Importar modelos de la aplicación 'scraper'
 from scraper.catalogos import area_inacap, clasificar_area, clasificar_nivel, normalizar_jornada, normalizar_texto, region_de_sede
-from scraper.etl import TASA_MINIMA_EXITO, cerrar_lote, crear_cliente_s3, retirar_ofertas_obsoletas, subir_json_crudo, tasa_exito
+from scraper.etl import (
+    TASA_MINIMA_EXITO, cerrar_lote, cerrar_lotes_colgados, crear_cliente_s3, describir_error,
+    retirar_ofertas_obsoletas, subir_json_crudo, tasa_exito,
+)
 from scraper.models import Institucion, Carrera, LoteScrapingS3, Sede, Jornada, OfertaAcademica
 
 URL_ARANCELES_SIGA3 = "https://siga3.inacap.cl/fup1.5/ofertas/contenidoCarrerasPorArea.asp"
 MINIMO_CARRERAS = 60
+INTENTOS_ARANCELES = 2
+# Mensajes de Chrome cuando la pestaña o la sesión murieron: ya no sirve seguir con el mismo navegador
+SENALES_NAVEGADOR_PERDIDO = ('no such window', 'tab crashed', 'session deleted', 'disconnected', 'invalid session id')
+
+
+def navegador_perdido(error):
+    if isinstance(error, (NoSuchWindowException, InvalidSessionIdException)):
+        return True
+    return isinstance(error, WebDriverException) and any(
+        senal in str(error).lower() for senal in SENALES_NAVEGADOR_PERDIDO)
+
 
 class Command(BaseCommand):
     help = 'Extrae el catálogo de INACAP, sube mallas a S3, procesa aranceles y actualiza direcciones de sedes'
@@ -29,6 +46,15 @@ class Command(BaseCommand):
         parser.add_argument('--limite', type=int, help='Procesa solo esta cantidad de carreras')
         parser.add_argument('--con-ventana', action='store_true', help='Muestra Chrome en lugar de usar modo headless')
         parser.add_argument('--carrera', action='append', help='Procesa solo las carreras cuya URL contiene este texto (repetible)')
+
+    def crear_navegador(self, con_ventana=False):
+        chrome_options = Options()
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        if not con_ventana:
+            chrome_options.add_argument("--headless=new")
+        chrome_options.add_argument("--window-size=1920,1080")
+        return webdriver.Chrome(options=chrome_options)
 
     def abrir_acordeon_aranceles(self, driver):
         try:
@@ -103,6 +129,9 @@ class Command(BaseCommand):
             defaults={"nombre": "Instituto Nacional de Capacitación Profesional", "sitio_web": "https://www.inacap.cl"}
         )
 
+        colgados = cerrar_lotes_colgados(institucion)
+        if colgados:
+            self.stdout.write(self.style.WARNING(f'[*] {colgados} lote(s) interrumpido(s) marcados como ERROR.'))
         lote = LoteScrapingS3.objects.create(institucion=institucion, estado_etl='EN_PROCESO')
         errores = []
         carreras_ok = 0
@@ -110,13 +139,8 @@ class Command(BaseCommand):
         ids_vigentes = set()
         filas_crudas = []
 
-        chrome_options = Options()
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--disable-dev-shm-usage")
-        if not kwargs['con_ventana']:
-            chrome_options.add_argument("--headless=new")
-        chrome_options.add_argument("--window-size=1920,1080")
-        driver = webdriver.Chrome(options=chrome_options)
+        driver = self.crear_navegador(kwargs['con_ventana'])
+        reintentadas = set()
         
         # ====================================================================
         # LISTA GLOBAL PARA SEDES (Evita duplicados)
@@ -141,7 +165,8 @@ class Command(BaseCommand):
 
             for i, enlace in enumerate(enlaces_carreras, 1):
                 self.stdout.write(self.style.WARNING(f'\nProcesando {i}/{len(enlaces_carreras)}: {enlace}'))
-                
+                errores_inicio, filas_inicio, ok_inicio = len(errores), len(filas_crudas), carreras_ok
+
                 try:
                     driver.get(enlace)
                     WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "accordionCarreras")))
@@ -194,129 +219,147 @@ class Command(BaseCommand):
                     )
 
                     # --- D. Aranceles ---
-                    ofertas_carrera = 0
-                    self.abrir_acordeon_aranceles(driver)
+                    # Un fallo puntual del navegador (WebDriverException) se reintenta recargando la carrera
+                    for intento_aranceles in range(1, INTENTOS_ARANCELES + 1):
+                        ofertas_carrera = 0
+                        reintentar = False
+                        errores_previos, filas_previas = len(errores), len(filas_crudas)
+                        self.abrir_acordeon_aranceles(driver)
 
-                    # El iframe nuevo del portal puede responder 404; el servicio siga3 entrega la misma tabla
-                    if not self.aranceles_cargados(driver):
-                        iframe = driver.find_element(By.CSS_SELECTOR, "iframe.iframe-aranceles")
-                        url_aranceles = f"{URL_ARANCELES_SIGA3}?{urlsplit(iframe.get_attribute('src')).query}"
-                        driver.execute_script("arguments[0].src = arguments[1];", iframe, url_aranceles)
-                        time.sleep(2)
+                        # El iframe nuevo del portal puede responder 404; el servicio siga3 entrega la misma tabla
+                        if not self.aranceles_cargados(driver):
+                            iframe = driver.find_element(By.CSS_SELECTOR, "iframe.iframe-aranceles")
+                            url_aranceles = f"{URL_ARANCELES_SIGA3}?{urlsplit(iframe.get_attribute('src')).query}"
+                            driver.execute_script("arguments[0].src = arguments[1];", iframe, url_aranceles)
+                            time.sleep(2)
 
-                    try:
-                        if not driver.find_elements(By.CSS_SELECTOR, "iframe.iframe-aranceles"):
-                            self.stdout.write(self.style.WARNING("    [*] No hay tabla de aranceles publicada para esta carrera."))
-                            errores.append(f"Sin tabla de aranceles: {nombre_carrera}")
-                        else:
-                            WebDriverWait(driver, 15).until(
-                                EC.frame_to_be_available_and_switch_to_it((By.CSS_SELECTOR, "iframe.iframe-aranceles"))
-                            )
-                            WebDriverWait(driver, 10).until(
-                                EC.visibility_of_element_located((By.ID, "table-bottom"))
-                            )
-
-                            def extraer_datos_tabla():
-                                nonlocal ofertas_carrera
-                                filas_borde = driver.find_elements(By.CSS_SELECTOR, "#table-bottom tr.borde")
-                                for fila in filas_borde:
-                                    try:
-                                        columnas = fila.find_elements(By.TAG_NAME, "td")
-                                        if len(columnas) >= 5:
-                                            nombre_sede_bruto = columnas[0].text.strip() or "Sede No Especificada"
-                                            horario_bruto = columnas[2].text.strip()
-                                            
-                                            texto_matricula = columnas[3].text.strip() if columnas[3].text.strip() else "0"
-                                            texto_semestral = columnas[4].text.strip() if columnas[4].text.strip() else "0"
-                                            
-                                            matricula_clp = self.limpiar_dinero(texto_matricula)
-                                            semestral_clp = self.limpiar_dinero(texto_semestral)
-                                            arancel_anual_clp = semestral_clp * 2
-                                            
-                                            sede_obj, _ = Sede.objects.get_or_create(
-                                                nombre_sede=nombre_sede_bruto,
-                                                institucion=institucion,
-                                            )
-                                            sede_obj.region = region_de_sede(nombre_sede_bruto)
-                                            sede_obj.save(update_fields=['region'])
-
-                                            tipo_jornada, modalidad = normalizar_jornada(horario_bruto, nombre_sede_bruto)
-                                            jornada_obj, _ = Jornada.objects.update_or_create(
-                                                tipo_jornada=tipo_jornada,
-                                                defaults={'modalidad': modalidad}
-                                            )
-
-                                            oferta_obj, _ = OfertaAcademica.objects.update_or_create(
-                                                institucion=institucion,
-                                                carrera=carrera_obj,
-                                                sede=sede_obj,
-                                                jornada=jornada_obj,
-                                                defaults={
-                                                    'lote_scraping': lote,
-                                                    'matricula_clp': matricula_clp,
-                                                    'arancel_semestral_clp': semestral_clp,
-                                                    'arancel_anual_clp': arancel_anual_clp
-                                                }
-                                            )
-                                            ids_vigentes.add(oferta_obj.id)
-                                            ofertas_carrera += 1
-                                            filas_crudas.append({
-                                                'carrera': nombre_carrera,
-                                                'area': area_publicada,
-                                                'sede': nombre_sede_bruto,
-                                                'horario': horario_bruto,
-                                                'matricula': texto_matricula,
-                                                'semestral': texto_semestral,
-                                            })
-                                    except StaleElementReferenceException:
-                                        continue
-
-                            try:
-                                select_element_initial = WebDriverWait(driver, 3).until(
-                                    EC.presence_of_element_located((By.NAME, "o[0][sede_ccod]"))
-                                )
-                                opciones_validas = len(Select(select_element_initial).options)
-                                
-                                for i in range(1, opciones_validas):
-                                    # Cada selección recarga la tabla: se reintenta si el selector queda obsoleto
-                                    for intento in range(1, 4):
-                                        try:
-                                            select_element = WebDriverWait(driver, 10).until(
-                                                EC.element_to_be_clickable((By.NAME, "o[0][sede_ccod]"))
-                                            )
-                                            driver.execute_script("arguments[0].scrollIntoView(true);", select_element)
-                                            time.sleep(0.5)
-
-                                            Select(select_element).select_by_index(i)
-                                            WebDriverWait(driver, 15).until(EC.staleness_of(select_element))
-                                            WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.ID, "table-bottom")))
-
-                                            extraer_datos_tabla()
-                                            break
-                                        except (StaleElementReferenceException, TimeoutException) as e_sede_tabla:
-                                            if intento == 3:
-                                                self.stdout.write(self.style.WARNING(f"    [!] Sede {i}/{opciones_validas - 1} omitida: {type(e_sede_tabla).__name__}"))
-                                                errores.append(f"Sede omitida en {nombre_carrera}: {i}/{opciones_validas - 1}")
-                                            time.sleep(2)
-
-                            except TimeoutException:
-                                extraer_datos_tabla()
-
-                            if ofertas_carrera:
-                                carreras_ok += 1
-                                self.stdout.write(self.style.SUCCESS(f"  [OK] Ofertas guardadas para {nombre_carrera}"))
+                        try:
+                            if not driver.find_elements(By.CSS_SELECTOR, "iframe.iframe-aranceles"):
+                                self.stdout.write(self.style.WARNING("    [*] No hay tabla de aranceles publicada para esta carrera."))
+                                errores.append(f"Sin tabla de aranceles: {nombre_carrera}")
                             else:
-                                self.stdout.write(self.style.WARNING(f"    [!] Sin ofertas leídas para {nombre_carrera}"))
-                                errores.append(f"Sin ofertas: {nombre_carrera}")
+                                WebDriverWait(driver, 15).until(
+                                    EC.frame_to_be_available_and_switch_to_it((By.CSS_SELECTOR, "iframe.iframe-aranceles"))
+                                )
+                                WebDriverWait(driver, 10).until(
+                                    EC.visibility_of_element_located((By.ID, "table-bottom"))
+                                )
 
-                    except TimeoutException:
-                        self.stdout.write(self.style.WARNING("    [!] Tiempo de espera agotado cargando los aranceles."))
-                        errores.append(f"Tiempo agotado en aranceles: {nombre_carrera}")
-                    except Exception as e_iframe:
-                        self.stdout.write(self.style.ERROR(f"    [!] Error leyendo aranceles de {nombre_carrera}: {type(e_iframe).__name__}: {e_iframe}"))
-                        errores.append(f"Error en aranceles de {nombre_carrera}: {type(e_iframe).__name__}")
-                    finally:
-                        driver.switch_to.default_content()
+                                def extraer_datos_tabla():
+                                    nonlocal ofertas_carrera
+                                    filas_borde = driver.find_elements(By.CSS_SELECTOR, "#table-bottom tr.borde")
+                                    for fila in filas_borde:
+                                        try:
+                                            columnas = fila.find_elements(By.TAG_NAME, "td")
+                                            if len(columnas) >= 5:
+                                                nombre_sede_bruto = columnas[0].text.strip() or "Sede No Especificada"
+                                                horario_bruto = columnas[2].text.strip()
+                                            
+                                                texto_matricula = columnas[3].text.strip() if columnas[3].text.strip() else "0"
+                                                texto_semestral = columnas[4].text.strip() if columnas[4].text.strip() else "0"
+                                            
+                                                matricula_clp = self.limpiar_dinero(texto_matricula)
+                                                semestral_clp = self.limpiar_dinero(texto_semestral)
+                                                arancel_anual_clp = semestral_clp * 2
+                                            
+                                                sede_obj, _ = Sede.objects.get_or_create(
+                                                    nombre_sede=nombre_sede_bruto,
+                                                    institucion=institucion,
+                                                )
+                                                sede_obj.region = region_de_sede(nombre_sede_bruto)
+                                                sede_obj.save(update_fields=['region'])
+
+                                                tipo_jornada, modalidad = normalizar_jornada(horario_bruto, nombre_sede_bruto)
+                                                jornada_obj, _ = Jornada.objects.update_or_create(
+                                                    tipo_jornada=tipo_jornada,
+                                                    defaults={'modalidad': modalidad}
+                                                )
+
+                                                oferta_obj, _ = OfertaAcademica.objects.update_or_create(
+                                                    institucion=institucion,
+                                                    carrera=carrera_obj,
+                                                    sede=sede_obj,
+                                                    jornada=jornada_obj,
+                                                    defaults={
+                                                        'lote_scraping': lote,
+                                                        'matricula_clp': matricula_clp,
+                                                        'arancel_semestral_clp': semestral_clp,
+                                                        'arancel_anual_clp': arancel_anual_clp
+                                                    }
+                                                )
+                                                ids_vigentes.add(oferta_obj.id)
+                                                ofertas_carrera += 1
+                                                filas_crudas.append({
+                                                    'carrera': nombre_carrera,
+                                                    'area': area_publicada,
+                                                    'sede': nombre_sede_bruto,
+                                                    'horario': horario_bruto,
+                                                    'matricula': texto_matricula,
+                                                    'semestral': texto_semestral,
+                                                })
+                                        except StaleElementReferenceException:
+                                            continue
+
+                                try:
+                                    select_element_initial = WebDriverWait(driver, 3).until(
+                                        EC.presence_of_element_located((By.NAME, "o[0][sede_ccod]"))
+                                    )
+                                    opciones_validas = len(Select(select_element_initial).options)
+                                
+                                    for i in range(1, opciones_validas):
+                                        # Cada selección recarga la tabla: se reintenta si el selector queda obsoleto
+                                        for intento in range(1, 4):
+                                            try:
+                                                select_element = WebDriverWait(driver, 10).until(
+                                                    EC.element_to_be_clickable((By.NAME, "o[0][sede_ccod]"))
+                                                )
+                                                driver.execute_script("arguments[0].scrollIntoView(true);", select_element)
+                                                time.sleep(0.5)
+
+                                                Select(select_element).select_by_index(i)
+                                                WebDriverWait(driver, 15).until(EC.staleness_of(select_element))
+                                                WebDriverWait(driver, 15).until(EC.presence_of_element_located((By.ID, "table-bottom")))
+
+                                                extraer_datos_tabla()
+                                                break
+                                            except (StaleElementReferenceException, TimeoutException) as e_sede_tabla:
+                                                if intento == 3:
+                                                    self.stdout.write(self.style.WARNING(f"    [!] Sede {i}/{opciones_validas - 1} omitida: {type(e_sede_tabla).__name__}"))
+                                                    errores.append(f"Sede omitida en {nombre_carrera}: {i}/{opciones_validas - 1}")
+                                                time.sleep(2)
+
+                                except TimeoutException:
+                                    extraer_datos_tabla()
+
+                                if ofertas_carrera:
+                                    carreras_ok += 1
+                                    self.stdout.write(self.style.SUCCESS(f"  [OK] Ofertas guardadas para {nombre_carrera}"))
+                                else:
+                                    self.stdout.write(self.style.WARNING(f"    [!] Sin ofertas leídas para {nombre_carrera}"))
+                                    errores.append(f"Sin ofertas: {nombre_carrera}")
+
+                        except TimeoutException:
+                            self.stdout.write(self.style.WARNING("    [!] Tiempo de espera agotado cargando los aranceles."))
+                            errores.append(f"Tiempo agotado en aranceles: {nombre_carrera}")
+                        except Exception as e_iframe:
+                            if navegador_perdido(e_iframe):
+                                raise  # se reinicia Chrome y se reintenta la carrera completa
+                            if isinstance(e_iframe, WebDriverException) and intento_aranceles < INTENTOS_ARANCELES:
+                                reintentar = True
+                                self.stdout.write(self.style.WARNING(f"    [!] Fallo del navegador en aranceles ({describir_error(e_iframe)}); se reintenta"))
+                            else:
+                                self.stdout.write(self.style.ERROR(f"    [!] Error leyendo aranceles de {nombre_carrera}: {describir_error(e_iframe)}"))
+                                errores.append(f"Error en aranceles de {nombre_carrera}: {describir_error(e_iframe)}")
+                        finally:
+                            driver.switch_to.default_content()
+                        if not reintentar:
+                            break
+                        # Se descarta lo anotado en el intento fallido y se vuelve a abrir la página de la carrera
+                        del errores[errores_previos:]
+                        del filas_crudas[filas_previas:]
+                        time.sleep(5)
+                        driver.get(enlace)
+                        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "accordionCarreras")))
                     
                     # ====================================================================
                     # --- E. RECOLECCIÓN DE URLS DE SEDES EN LISTA ÚNICA ---
@@ -350,8 +393,23 @@ class Command(BaseCommand):
                     time.sleep(2) 
                     
                 except Exception as error_carrera:
+                    if navegador_perdido(error_carrera):
+                        # Chrome se cerró o se colgó: sin reiniciarlo, todas las carreras siguientes fallarían
+                        self.stdout.write(self.style.WARNING(f'[!] Se perdió el navegador ({describir_error(error_carrera)}); se reinicia Chrome'))
+                        try:
+                            driver.quit()
+                        except Exception:
+                            pass
+                        driver = self.crear_navegador(kwargs['con_ventana'])
+                        if enlace not in reintentadas:
+                            reintentadas.add(enlace)
+                            del errores[errores_inicio:]
+                            del filas_crudas[filas_inicio:]
+                            carreras_ok = ok_inicio
+                            enlaces_carreras.append(enlace)  # se vuelve a procesar al final de la lista
+                            continue
                     self.stdout.write(self.style.ERROR(f'⚠️ Error al procesar {enlace}: {str(error_carrera)}'))
-                    errores.append(f"Error en {enlace}: {type(error_carrera).__name__}")
+                    errores.append(f"Error en {enlace}: {describir_error(error_carrera)}")
                     continue
 
             self.stdout.write(self.style.SUCCESS(f'\n✅ Fase 1 completada. Se guardaron {len(lista_urls_sedes)} URLs de sedes únicas.'))
@@ -424,6 +482,6 @@ class Command(BaseCommand):
 
         except Exception as e:
             self.stdout.write(self.style.ERROR(f'❌ Error crítico en el scraper maestro: {str(e)}'))
-            cerrar_lote(lote, 'ERROR', carreras_ok, total_carreras, len(ids_vigentes), [*errores, f'Crítico: {e}'])
+            cerrar_lote(lote, 'ERROR', carreras_ok, total_carreras, len(ids_vigentes), [*errores, f'Crítico: {describir_error(e, 500)}'])
         finally:
             driver.quit()
