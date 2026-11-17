@@ -11,6 +11,8 @@ FILTROS_CATALOGO = [
     OpenApiParameter('region', str, description='Región exacta de la sede.'),
     OpenApiParameter('modalidad', str, description='Presencial, Online, etc.'),
     OpenApiParameter('nivel', str, description='Nivel de formación de la carrera.'),
+    OpenApiParameter('area', str, description='Área de estudio (clave del test Ikigai: tecnologia, salud, economia, '
+                     'industria, arte, educacion, naturaleza o turismo). Acepta varias separadas por coma.'),
     OpenApiParameter('carrera', str, description='La carrera contiene este texto.'),
     OpenApiParameter('excluir', str, description='La carrera NO contiene este texto.'),
     OpenApiParameter('carrera_id', int, description='Solo las ofertas de esta carrera.'),
@@ -41,6 +43,9 @@ CAMPOS_CARRERA = {
     'duracion_texto': serializers.CharField(help_text='Tal como la publica la institución'),
     'duracion_meses': RangoMesesSerializer,
     'malla_url': serializers.CharField(allow_null=True),
+    'area_estudio': serializers.CharField(help_text='Clave común con el test Ikigai; vacía si no se pudo determinar'),
+    'area_estudio_nombre': serializers.CharField(),
+    'area_institucion': serializers.CharField(help_text='Área (INACAP) o escuela (Duoc UC) tal como se publica'),
     'total_ofertas': serializers.IntegerField(),
     'total_sedes': serializers.IntegerField(),
     'sedes': serializers.ListField(child=serializers.CharField()),
@@ -74,6 +79,7 @@ FiltrosSerializer = inline_serializer('Filtros', {
     'modalidades': serializers.ListField(child=serializers.CharField()),
     'regiones': serializers.ListField(child=serializers.CharField()),
     'niveles': serializers.ListField(child=serializers.CharField()),
+    'areas': OpcionSerializer.__class__(many=True),
 })
 
 SaludSerializer = inline_serializer('Salud', {'estado': serializers.CharField()})

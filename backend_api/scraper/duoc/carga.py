@@ -3,9 +3,10 @@ from decimal import Decimal
 from django.db import transaction
 
 from scraper.catalogos import (
-    clasificar_nivel, elegir_duracion, normalizar_jornada, parsear_duraciones, region_de_sede, semestres_publicados,
+    area_duoc, clasificar_area, clasificar_nivel, elegir_duracion, normalizar_jornada, parsear_duraciones,
+    region_de_sede, semestres_publicados,
 )
-from scraper.duoc.spider import normalizar_nombre_sede
+from scraper.duoc.spider import normalizar_nombre_sede, ruta_carrera
 from scraper.models import Carrera, Institucion, Jornada, OfertaAcademica, Sede
 
 MINIMO_CARRERAS = 60
@@ -23,6 +24,17 @@ def duraciones_del_item(item):
     if item.get('duracion_semestres'):
         return parsear_duraciones([f"{item['duracion_semestres']} semestres"])
     return []
+
+
+def areas_por_carrera(items):
+    """Ruta de cada carrera -> (escuela publicada, área común), según las páginas de escuela."""
+    areas = {}
+    for item in items:
+        if item['tipo'] == 'escuela':
+            area = area_duoc(item['url'], item.get('nombre'))
+            for ruta in item.get('carreras', []):
+                areas.setdefault(ruta, area)
+    return areas
 
 
 def obtener_institucion():
@@ -61,12 +73,14 @@ def cargar_items(items, institucion, lote=None, cuotas_por_semestre=CUOTAS_POR_S
         for item in items if item['tipo'] == 'sede'
     }
     validas, _ = validar_items(items)
+    areas = areas_por_carrera(items)
 
     ids_vigentes = []
     for item in validas:
         duraciones = duraciones_del_item(item)
         semestres = semestres_publicados(duraciones)
         principal = elegir_duracion(duraciones, 'Presencial')
+        escuela, area_institucional = areas.get(ruta_carrera(item['url']), ('', ''))
         carrera, _ = Carrera.objects.update_or_create(
             nombre_carrera=item['nombre'],
             institucion=institucion,
@@ -76,6 +90,8 @@ def cargar_items(items, institucion, lote=None, cuotas_por_semestre=CUOTAS_POR_S
                 'nivel_formacion': clasificar_nivel(item['nombre'], semestres, principal and principal['meses']),
                 'url_malla': item.get('url_malla'),
                 's3_url_malla_pdf': item.get('malla_s3'),
+                'area_institucion': escuela,
+                'area_estudio': clasificar_area(item['nombre'], area_institucional),
             },
         )
 
