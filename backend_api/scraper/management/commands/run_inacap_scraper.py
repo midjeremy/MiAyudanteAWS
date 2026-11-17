@@ -12,7 +12,10 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select
-from selenium.common.exceptions import StaleElementReferenceException, TimeoutException, WebDriverException
+from selenium.common.exceptions import (
+    InvalidSessionIdException, NoSuchWindowException, StaleElementReferenceException, TimeoutException,
+    WebDriverException,
+)
 
 # Importar modelos de la aplicación 'scraper'
 from scraper.catalogos import area_inacap, clasificar_area, clasificar_nivel, normalizar_jornada, normalizar_texto, region_de_sede
@@ -25,6 +28,16 @@ from scraper.models import Institucion, Carrera, LoteScrapingS3, Sede, Jornada, 
 URL_ARANCELES_SIGA3 = "https://siga3.inacap.cl/fup1.5/ofertas/contenidoCarrerasPorArea.asp"
 MINIMO_CARRERAS = 60
 INTENTOS_ARANCELES = 2
+# Mensajes de Chrome cuando la pestaña o la sesión murieron: ya no sirve seguir con el mismo navegador
+SENALES_NAVEGADOR_PERDIDO = ('no such window', 'tab crashed', 'session deleted', 'disconnected', 'invalid session id')
+
+
+def navegador_perdido(error):
+    if isinstance(error, (NoSuchWindowException, InvalidSessionIdException)):
+        return True
+    return isinstance(error, WebDriverException) and any(
+        senal in str(error).lower() for senal in SENALES_NAVEGADOR_PERDIDO)
+
 
 class Command(BaseCommand):
     help = 'Extrae el catálogo de INACAP, sube mallas a S3, procesa aranceles y actualiza direcciones de sedes'
@@ -33,6 +46,15 @@ class Command(BaseCommand):
         parser.add_argument('--limite', type=int, help='Procesa solo esta cantidad de carreras')
         parser.add_argument('--con-ventana', action='store_true', help='Muestra Chrome en lugar de usar modo headless')
         parser.add_argument('--carrera', action='append', help='Procesa solo las carreras cuya URL contiene este texto (repetible)')
+
+    def crear_navegador(self, con_ventana=False):
+        chrome_options = Options()
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        if not con_ventana:
+            chrome_options.add_argument("--headless=new")
+        chrome_options.add_argument("--window-size=1920,1080")
+        return webdriver.Chrome(options=chrome_options)
 
     def abrir_acordeon_aranceles(self, driver):
         try:
@@ -117,13 +139,8 @@ class Command(BaseCommand):
         ids_vigentes = set()
         filas_crudas = []
 
-        chrome_options = Options()
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--disable-dev-shm-usage")
-        if not kwargs['con_ventana']:
-            chrome_options.add_argument("--headless=new")
-        chrome_options.add_argument("--window-size=1920,1080")
-        driver = webdriver.Chrome(options=chrome_options)
+        driver = self.crear_navegador(kwargs['con_ventana'])
+        reintentadas = set()
         
         # ====================================================================
         # LISTA GLOBAL PARA SEDES (Evita duplicados)
@@ -148,7 +165,8 @@ class Command(BaseCommand):
 
             for i, enlace in enumerate(enlaces_carreras, 1):
                 self.stdout.write(self.style.WARNING(f'\nProcesando {i}/{len(enlaces_carreras)}: {enlace}'))
-                
+                errores_inicio, filas_inicio, ok_inicio = len(errores), len(filas_crudas), carreras_ok
+
                 try:
                     driver.get(enlace)
                     WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "accordionCarreras")))
@@ -324,6 +342,8 @@ class Command(BaseCommand):
                             self.stdout.write(self.style.WARNING("    [!] Tiempo de espera agotado cargando los aranceles."))
                             errores.append(f"Tiempo agotado en aranceles: {nombre_carrera}")
                         except Exception as e_iframe:
+                            if navegador_perdido(e_iframe):
+                                raise  # se reinicia Chrome y se reintenta la carrera completa
                             if isinstance(e_iframe, WebDriverException) and intento_aranceles < INTENTOS_ARANCELES:
                                 reintentar = True
                                 self.stdout.write(self.style.WARNING(f"    [!] Fallo del navegador en aranceles ({describir_error(e_iframe)}); se reintenta"))
@@ -373,6 +393,21 @@ class Command(BaseCommand):
                     time.sleep(2) 
                     
                 except Exception as error_carrera:
+                    if navegador_perdido(error_carrera):
+                        # Chrome se cerró o se colgó: sin reiniciarlo, todas las carreras siguientes fallarían
+                        self.stdout.write(self.style.WARNING(f'[!] Se perdió el navegador ({describir_error(error_carrera)}); se reinicia Chrome'))
+                        try:
+                            driver.quit()
+                        except Exception:
+                            pass
+                        driver = self.crear_navegador(kwargs['con_ventana'])
+                        if enlace not in reintentadas:
+                            reintentadas.add(enlace)
+                            del errores[errores_inicio:]
+                            del filas_crudas[filas_inicio:]
+                            carreras_ok = ok_inicio
+                            enlaces_carreras.append(enlace)  # se vuelve a procesar al final de la lista
+                            continue
                     self.stdout.write(self.style.ERROR(f'⚠️ Error al procesar {enlace}: {str(error_carrera)}'))
                     errores.append(f"Error en {enlace}: {describir_error(error_carrera)}")
                     continue

@@ -56,3 +56,22 @@ class LotesColgadosTests(TestCase):
         self.assertEqual(cerrar_lotes_colgados(self.inacap), 0)
         ajeno.refresh_from_db()
         self.assertEqual(ajeno.estado_etl, 'EN_PROCESO')
+
+
+class NavegadorPerdidoTests(SimpleTestCase):
+    def test_detecta_ventana_o_sesion_perdida(self):
+        from selenium.common.exceptions import InvalidSessionIdException, NoSuchWindowException
+
+        from scraper.management.commands.run_inacap_scraper import navegador_perdido
+        self.assertTrue(navegador_perdido(NoSuchWindowException('no such window: target window already closed')))
+        self.assertTrue(navegador_perdido(InvalidSessionIdException('invalid session id')))
+        self.assertTrue(navegador_perdido(WebDriverException('unknown error: session deleted because of page crash')))
+        self.assertTrue(navegador_perdido(WebDriverException('tab crashed')))
+
+    def test_fallos_puntuales_no_reinician_el_navegador(self):
+        from selenium.common.exceptions import TimeoutException
+
+        from scraper.management.commands.run_inacap_scraper import navegador_perdido
+        self.assertFalse(navegador_perdido(TimeoutException('timeout')))
+        self.assertFalse(navegador_perdido(WebDriverException('unknown error: net::ERR_CONNECTION_RESET')))
+        self.assertFalse(navegador_perdido(ValueError('no such window')))
