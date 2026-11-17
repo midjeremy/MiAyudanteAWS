@@ -2,6 +2,7 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from scraper.catalogos import AREAS_ESTUDIO
 from scraper.models import OfertaAcademica
 
 
@@ -15,6 +16,9 @@ class OfertaSerializer(serializers.ModelSerializer):
     titulo = serializers.CharField(source='carrera.titulo_otorgado')
     duracion_semestres = serializers.IntegerField(source='carrera.duracion_semestres')
     malla_url = serializers.CharField(source='carrera.url_malla')
+    area_estudio = serializers.CharField(source='carrera.area_estudio')
+    area_estudio_nombre = serializers.SerializerMethodField()
+    area_institucion = serializers.CharField(source='carrera.area_institucion')
     sede = serializers.CharField(source='sede.nombre_sede')
     region = serializers.CharField(source='sede.region')
     direccion = serializers.CharField(source='sede.direccion')
@@ -33,11 +37,16 @@ class OfertaSerializer(serializers.ModelSerializer):
         model = OfertaAcademica
         fields = [
             'id', 'institucion', 'institucion_codigo', 'carrera_id', 'carrera', 'nivel', 'titulo',
-            'duracion_semestres', 'duracion_texto', 'duracion_meses', 'malla_url', 'sede', 'region', 'direccion',
+            'duracion_semestres', 'duracion_texto', 'duracion_meses', 'malla_url', 'area_estudio',
+            'area_estudio_nombre', 'area_institucion', 'sede', 'region', 'direccion',
             'jornada', 'modalidad', 'valor_matricula', 'matricula_periodo', 'valor_mensual', 'valor_semestral',
             'valor_anual', 'aranceles_calculados', 'arancel_referencia', 'arancel_publicado',
         ]
         read_only_fields = fields
+
+    def get_area_estudio_nombre(self, oferta) -> str:
+        """Nombre del área común con el test Ikigai, por ejemplo 'Tecnología'."""
+        return AREAS_ESTUDIO.get(oferta.carrera.area_estudio, '')
 
     @extend_schema_field(OpenApiTypes.OBJECT)
     def get_arancel_referencia(self, oferta):

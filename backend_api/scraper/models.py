@@ -33,6 +33,10 @@ class Carrera(models.Model):
     titulo_otorgado = models.CharField(max_length=255, blank=True, null=True)
     s3_url_malla_pdf = models.TextField(blank=True, null=True)
     url_malla = models.URLField(max_length=500, blank=True, null=True)
+    # Agrupación tal como la publica la institución (INACAP: área; Duoc UC: escuela)
+    area_institucion = models.CharField(max_length=100, blank=True, default='')
+    # Área común con el test Ikigai (tecnologia, salud, economia, ...); vacío si no se pudo determinar
+    area_estudio = models.CharField(max_length=20, blank=True, default='', db_index=True)
 
     def __str__(self):
         return self.nombre_carrera

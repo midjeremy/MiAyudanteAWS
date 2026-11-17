@@ -19,9 +19,10 @@ class InstitucionAdmin(admin.ModelAdmin):
 
 @admin.register(Carrera)
 class CarreraAdmin(admin.ModelAdmin):
-    list_display = ('nombre_carrera', 'institucion', 'nivel_formacion', 'duracion_semestres', 'duracion_texto')
-    search_fields = ('nombre_carrera', 'titulo_otorgado')
-    list_filter = ('institucion', 'nivel_formacion', 'duracion_semestres')
+    list_display = ('nombre_carrera', 'institucion', 'area_estudio', 'area_institucion', 'nivel_formacion',
+                    'duracion_semestres', 'duracion_texto')
+    search_fields = ('nombre_carrera', 'titulo_otorgado', 'area_institucion')
+    list_filter = ('institucion', 'area_estudio', 'nivel_formacion', 'duracion_semestres')
     list_select_related = ('institucion',)
 
 

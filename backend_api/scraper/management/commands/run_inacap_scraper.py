@@ -15,7 +15,7 @@ from selenium.webdriver.support.ui import Select
 from selenium.common.exceptions import StaleElementReferenceException, TimeoutException, WebDriverException
 
 # Importar modelos de la aplicación 'scraper'
-from scraper.catalogos import clasificar_nivel, normalizar_jornada, normalizar_texto, region_de_sede
+from scraper.catalogos import area_inacap, clasificar_area, clasificar_nivel, normalizar_jornada, normalizar_texto, region_de_sede
 from scraper.etl import (
     TASA_MINIMA_EXITO, cerrar_lote, cerrar_lotes_colgados, crear_cliente_s3, describir_error,
     retirar_ofertas_obsoletas, subir_json_crudo, tasa_exito,
@@ -184,6 +184,8 @@ class Command(BaseCommand):
                         errores.append(f"Sin malla: {nombre_carrera}")
 
                     # --- C. Guardar Carrera en PostgreSQL ---
+                    # El área viene en la URL: /carreras/area-<area>/<carrera>
+                    area_publicada, area_institucional = area_inacap(enlace)
                     carrera_obj, _ = Carrera.objects.update_or_create(
                         nombre_carrera=nombre_carrera,
                         institucion=institucion,
@@ -192,7 +194,9 @@ class Command(BaseCommand):
                             'titulo_otorgado': titulo_otorgado[:255] if titulo_otorgado else None,
                             'duracion_semestres': duracion_semestres,
                             's3_url_malla_pdf': ruta_s3,
-                            'url_malla': url_pdf.split('?')[0] if url_pdf else None
+                            'url_malla': url_pdf.split('?')[0] if url_pdf else None,
+                            'area_institucion': area_publicada,
+                            'area_estudio': clasificar_area(nombre_carrera, area_institucional),
                         }
                     )
 
@@ -269,6 +273,7 @@ class Command(BaseCommand):
                                                 ofertas_carrera += 1
                                                 filas_crudas.append({
                                                     'carrera': nombre_carrera,
+                                                    'area': area_publicada,
                                                     'sede': nombre_sede_bruto,
                                                     'horario': horario_bruto,
                                                     'matricula': texto_matricula,
