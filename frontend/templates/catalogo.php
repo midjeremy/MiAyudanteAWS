@@ -97,6 +97,12 @@ function carrera_a_tarjeta(array $row): array{
     return $tarjeta;
 }
 
+// El servidor no tiene la extensión mbstring: mb_strtolower() daría error 500. Si existe se usa (respeta
+// tildes); si no, strtolower() baja solo las letras ASCII, sin dañar el texto UTF-8.
+function minusculas(string $texto): string{
+    return function_exists('mb_strtolower') ? mb_strtolower($texto, 'UTF-8') : strtolower($texto);
+}
+
 // Detalle de una oferta (detalle.php). La API no entrega objetivos ni campo laboral redactados: en esas
 // secciones se muestran los datos reales que sí existen (título, nivel, duración, área) y se remite a la
 // malla oficial, sin inventar contenido sobre la carrera.
@@ -114,11 +120,16 @@ function oferta_a_detalle(array $row): array{
     $arancel = arancel_de_oferta($row);
 
     $ubicacion = $sede . ($region ? ' (' . $region . ')' : '');
-    $descripcion = $nombre . ($nivel ? ' es una carrera de nivel ' . mb_strtolower($nivel) : ' es una carrera')
+    // Cada parte se agrega solo si existe, para no dejar frases cortadas ("de INACAP., modalidad...")
+    $donde = array_filter([
+        $ubicacion ? 'la sede ' . $ubicacion : '',
+        $jornada ? 'jornada ' . minusculas($jornada) : '',
+        $modalidad ? 'modalidad ' . minusculas($modalidad) : '',
+    ]);
+    $descripcion = $nombre . ' es una carrera'
+        . ($nivel ? ' de nivel ' . minusculas($nivel) : '')
         . ($institucion ? ' de ' . $institucion : '') . '.'
-        . ($ubicacion ? ' Se imparte en la sede ' . $ubicacion : '')
-        . ($jornada ? ', jornada ' . mb_strtolower($jornada) : '')
-        . ($modalidad ? ', modalidad ' . mb_strtolower($modalidad) : '') . '.'
+        . ($donde ? ' Se imparte en ' . implode(', ', $donde) . '.' : '')
         . "\nLa información se actualiza cada semana desde el sitio oficial de la institución.";
 
     $matricula = 'No informada';
