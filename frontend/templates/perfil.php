@@ -37,6 +37,91 @@ if (!empty($ids_guardados)) {
 }
 $total_guardadas = count($ids_guardados);
 $guardadas_vista = array_slice($carreras_guardadas, 0, 4);
+
+// ===================== [LEY 21.719] Derechos del titular =====================
+// Rectificación (editar nombre), supresión (borrar resultados del test o la cuenta) y acceso
+// (descargar mis datos, en mis_datos.php). Django hace el cambio real en la base de datos.
+$token = $_SESSION['token_acceso'] ?? null;
+if (empty($_SESSION['csrf_privacidad'])) {
+    $_SESSION['csrf_privacidad'] = bin2hex(random_bytes(16));
+}
+
+function volver_a_privacidad(string $tipo, string $texto): void {
+    // Patrón POST-redirección-GET: recargar la página no repite la acción
+    $_SESSION['flash_privacidad'] = ['tipo' => $tipo, 'texto' => $texto];
+    header('Location: perfil.php#privacidad');
+    exit;
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion'])) {
+    if (!hash_equals($_SESSION['csrf_privacidad'], (string) ($_POST['csrf'] ?? ''))) {
+        volver_a_privacidad('error', 'La página expiró. Vuelve a intentarlo.');
+    }
+    if ($token === null) {
+        volver_a_privacidad('error', 'Tu sesión expiró. Cierra sesión e inicia de nuevo.');
+    }
+
+    $accion = $_POST['accion'];
+    if ($accion === 'editar_nombre') {
+        $r = api_solicitud('PATCH', '/api/v1/auth/perfil/', [
+            'nombre' => trim($_POST['nombre'] ?? ''),
+            'apellidos' => trim($_POST['apellidos'] ?? ''),
+        ], $token);
+        if ($r['codigo'] === 200) {
+            $_SESSION['usuario'] = array_merge($_SESSION['usuario'], $r['datos']['usuario']);
+            volver_a_privacidad('ok', 'Actualizamos tu nombre.');
+        }
+    } elseif ($accion === 'borrar_resultado') {
+        $id_resultado = (int) ($_POST['resultado_id'] ?? 0);
+        $r = api_solicitud('DELETE', '/api/v1/auth/mis-datos/resultados/' . $id_resultado . '/', null, $token);
+        if ($r['codigo'] === 204) {
+            volver_a_privacidad('ok', 'Eliminamos ese resultado del test.');
+        }
+    } elseif ($accion === 'eliminar_cuenta') {
+        $r = api_solicitud('DELETE', '/api/v1/auth/cuenta/', ['password' => $_POST['password'] ?? ''], $token);
+        if ($r['codigo'] === 204) {
+            // La cuenta y todos sus datos ya no existen: se cierra la sesión
+            $_SESSION = [];
+            session_destroy();
+            header('Location: index.php?cuenta_eliminada=1');
+            exit;
+        }
+        if ($r['codigo'] === 403) {
+            volver_a_privacidad('error', 'La contraseña no es correcta. Tu cuenta no se eliminó.');
+        }
+    } else {
+        volver_a_privacidad('error', 'Acción no reconocida.');
+    }
+
+    if ($r['codigo'] === 401) {
+        volver_a_privacidad('error', 'Tu sesión expiró. Cierra sesión e inicia de nuevo.');
+    }
+    if ($r['codigo'] === 429) {
+        volver_a_privacidad('error', 'Demasiados intentos. Espera un minuto e inténtalo de nuevo.');
+    }
+    volver_a_privacidad('error', $r['datos']['error'] ?? 'No pudimos completar la acción. Inténtalo más tarde.');
+}
+
+$flash = $_SESSION['flash_privacidad'] ?? null;
+unset($_SESSION['flash_privacidad']);
+
+// Datos actuales del titular: cuenta y resultados del test guardados
+$mis_datos = null;
+if ($token !== null) {
+    $r = api_solicitud('GET', '/api/v1/auth/mis-datos/', null, $token);
+    if ($r['codigo'] === 200 && is_array($r['datos'])) {
+        $mis_datos = $r['datos'];
+    }
+}
+$resultados_test = $mis_datos['resultados_test'] ?? [];
+$nombre_editable = $mis_datos['cuenta']['nombre'] ?? $nombre;
+$apellidos_editable = $mis_datos['cuenta']['apellidos'] ?? $apellidos;
+
+function fecha_corta(?string $iso): string {
+    $fecha = $iso ? date_create($iso) : false;
+    return $fecha ? $fecha->format('d-m-Y') : '';
+}
+// =============================================================================
 ?>
 
 <!DOCTYPE html>
@@ -47,6 +132,7 @@ $guardadas_vista = array_slice($carreras_guardadas, 0, 4);
     <title>Perfil - Mi Ayudante</title>
     <link rel="stylesheet" href="/static/css/carreras.css">
     <link rel="stylesheet" href="/static/css/perfil.css">
+    <link rel="stylesheet" href="/static/css/privacidad.css"><!-- [LEY 21.719] -->
     <link rel="stylesheet" href="/static/css/responsive.css">
 </head>
 <body class="portal-body">
@@ -111,9 +197,8 @@ $guardadas_vista = array_slice($carreras_guardadas, 0, 4);
                     </div>
                 </dl>
 
-                <button type="button" class="btn-perfil btn-secundario" disabled title="Disponible próximamente">
-                    Editar perfil (próximamente)
-                </button>
+                <!-- [LEY 21.719] Rectificación: antes era un botón deshabilitado -->
+                <a href="#privacidad" class="btn-perfil btn-secundario">Editar mis datos</a>
                 <a href="logout.php" class="btn-perfil btn-salir">Cerrar sesión</a>
             </div>
         </aside>
@@ -135,8 +220,9 @@ $guardadas_vista = array_slice($carreras_guardadas, 0, 4);
                     <span><?= $total_guardadas === 1 ? 'carrera guardada' : 'carreras guardadas' ?></span>
                 </div>
                 <div class="perfil-tarjeta perfil-stat">
-                    <strong>—</strong>
-                    <span>test vocacional pendiente</span>
+                    <!-- [LEY 21.719] Cuántos resultados del test hay guardados en la cuenta -->
+                    <strong><?= count($resultados_test) ?: '—' ?></strong>
+                    <span><?= count($resultados_test) === 1 ? 'resultado del test guardado' : (count($resultados_test) ? 'resultados del test guardados' : 'test vocacional pendiente') ?></span>
                 </div>
             </div>
 
@@ -176,11 +262,79 @@ $guardadas_vista = array_slice($carreras_guardadas, 0, 4);
                 <div class="perfil-tarjeta-cabecera">
                     <h3>Mi test vocacional</h3>
                 </div>
-                <div class="perfil-vacio">
-                    <p>Todavía no tienes resultados. Responde el test para descubrir qué áreas se relacionan con tus intereses.</p>
-                    <a href="pages/test.php" class="btn-perfil btn-primario">Hacer el test</a>
-                </div>
+                <?php if (empty($resultados_test)): ?>
+                    <div class="perfil-vacio">
+                        <p>Todavía no tienes resultados. Responde el test para descubrir qué áreas se relacionan con tus intereses.</p>
+                        <a href="pages/test.php" class="btn-perfil btn-primario">Hacer el test</a>
+                    </div>
+                <?php else: ?>
+                    <!-- [LEY 21.719] Supresión parcial: cada resultado guardado se puede borrar -->
+                    <ul class="privacidad-resultados">
+                        <?php foreach ($resultados_test as $res): ?>
+                            <li>
+                                <span>Resultado del <?= htmlspecialchars(fecha_corta($res['creado_en'] ?? null)) ?></span>
+                                <form method="POST" action="perfil.php" onsubmit="return confirm('¿Eliminar este resultado del test? No se puede deshacer.');">
+                                    <input type="hidden" name="csrf" value="<?= htmlspecialchars($_SESSION['csrf_privacidad']) ?>">
+                                    <input type="hidden" name="accion" value="borrar_resultado">
+                                    <input type="hidden" name="resultado_id" value="<?= (int) $res['id'] ?>">
+                                    <button type="submit" class="btn-privacidad-peligro">Eliminar</button>
+                                </form>
+                            </li>
+                        <?php endforeach; ?>
+                    </ul>
+                    <a href="pages/test.php" class="btn-perfil btn-primario">Ver mi último resultado</a>
+                <?php endif; ?>
             </div>
+
+            <!-- ===================== [LEY 21.719] MIS DATOS Y PRIVACIDAD ===================== -->
+            <div class="perfil-tarjeta" id="privacidad">
+                <div class="perfil-tarjeta-cabecera">
+                    <h3>Mis datos y privacidad</h3>
+                    <a href="privacidad.php" class="enlace-ver">Política de privacidad →</a>
+                </div>
+
+                <?php if ($flash): ?>
+                    <div class="privacidad-aviso privacidad-aviso-<?= $flash['tipo'] === 'ok' ? 'ok' : 'error' ?>">
+                        <?= htmlspecialchars($flash['texto']) ?>
+                    </div>
+                <?php endif; ?>
+
+                <!-- Rectificación -->
+                <form method="POST" action="perfil.php" class="privacidad-bloque">
+                    <h4>Corregir mi nombre</h4>
+                    <input type="hidden" name="csrf" value="<?= htmlspecialchars($_SESSION['csrf_privacidad']) ?>">
+                    <input type="hidden" name="accion" value="editar_nombre">
+                    <div class="privacidad-campos">
+                        <label>Nombre <input type="text" name="nombre" value="<?= htmlspecialchars($nombre_editable) ?>" maxlength="150" required></label>
+                        <label>Apellidos <input type="text" name="apellidos" value="<?= htmlspecialchars($apellidos_editable) ?>" maxlength="150" required></label>
+                    </div>
+                    <button type="submit" class="btn-perfil btn-secundario">Guardar cambios</button>
+                </form>
+
+                <!-- Acceso y portabilidad -->
+                <div class="privacidad-bloque">
+                    <h4>Descargar mis datos</h4>
+                    <p>Un archivo con tu cuenta, tus consentimientos y tus resultados del test, en formato JSON.</p>
+                    <a href="mis_datos.php" class="btn-perfil btn-secundario">Descargar mis datos</a>
+                </div>
+
+                <!-- Supresión de la cuenta (también revoca el consentimiento) -->
+                <form method="POST" action="perfil.php" class="privacidad-bloque privacidad-peligro"
+                      onsubmit="return confirm('Se eliminarán tu cuenta y todos tus resultados del test. No se puede deshacer. ¿Continuar?');">
+                    <h4>Eliminar mi cuenta</h4>
+                    <p>Borra tu cuenta y todos sus datos. Podrás seguir usando la plataforma sin cuenta.</p>
+                    <input type="hidden" name="csrf" value="<?= htmlspecialchars($_SESSION['csrf_privacidad']) ?>">
+                    <input type="hidden" name="accion" value="eliminar_cuenta">
+                    <label>Confirma con tu contraseña <input type="password" name="password" required autocomplete="current-password"></label>
+                    <button type="submit" class="btn-privacidad-peligro">Eliminar mi cuenta</button>
+                </form>
+
+                <p class="privacidad-nota">
+                    ¿Otra solicitud sobre tus datos (oposición o bloqueo)? Escríbenos a
+                    <a href="mailto:privacidad@mi-ayudante.cl">privacidad@mi-ayudante.cl</a>. Respondemos en un máximo de 30 días corridos.
+                </p>
+            </div>
+            <!-- ============================================================================ -->
         </section>
 
     </main>

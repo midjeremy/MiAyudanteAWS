@@ -59,7 +59,7 @@
 
 .nav-logo-text strong {
     font-size: 16px;
-    color: var(--brand-purple);
+    color: var(--text-dark);
     line-height: 1.2;
 }
 
@@ -98,24 +98,15 @@
     gap: 15px;
 }
 
-.btn-icon {
-    background: none;
-    border: none;
-    color: var(--text-muted);
-    font-weight: 500;
-    cursor: pointer;
-    font-size: 14px;
-}
-
-/* Estilo para el botón Guardados tipo píldora/cápsula */
+/* Botón Guardados con el estilo original de esquinas de 10px */
 .btn-action-saved {
     display: flex;
     align-items: center;
     gap: 8px;
     background-color: var(--bg-white);
     border: 1px solid var(--border-color);
-    padding: 6px 16px;
-    border-radius: var(--radius-full);
+    padding: 8px 14px;
+    border-radius: 10px;
     font-size: 14px;
     font-weight: 500;
     color: var(--text-dark);
@@ -130,26 +121,6 @@
     color: var(--brand-purple);
 }
 
-.user-avatar {
-    background-color: var(--brand-purple);
-    color: white;
-    border: none;
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    font-weight: bold;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background-color 0.2s ease;
-}
-
-.user-avatar:hover {
-    background-color: #580b94;
-}
-
-/* Estilo para la imagen circular del gato en el navbar */
 .user-avatar-img {
     width: 38px;
     height: 38px;
@@ -282,7 +253,6 @@
     margin-bottom: 20px;
 }
 
-/* Items seleccionados en el Sidebar */
 .selected-career {
     display: flex;
     align-items: center;
@@ -309,7 +279,6 @@
     flex-shrink: 0;
 }
 
-/* Insignias de colores para el Sidebar */
 .badge-purple { background-color: var(--brand-purple); }
 .badge-teal { background-color: var(--brand-teal); }
 .badge-blue { background-color: var(--brand-blue); }
@@ -353,20 +322,28 @@
     cursor: pointer;
     font-size: 13px;
     margin-top: 10px;
+    text-align: center;
 }
 
 .btn-clear:hover {
     background: #fef2f2;
 }
 
-/* Buscador */
 .search-box {
     display: flex;
     align-items: center;
+    gap: 8px;
+    background-color: #fafafa;
     border: 1px solid var(--border-color);
     border-radius: var(--radius-md);
     padding: 10px 14px;
     margin-bottom: 12px;
+    transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.search-box:focus-within {
+    background-color: var(--bg-white);
+    border-color: var(--brand-purple);
 }
 
 .search-box input {
@@ -374,13 +351,16 @@
     outline: none;
     flex-grow: 1;
     font-size: 14px;
+    background: transparent;
+    color: var(--text-dark);
 }
 
 .search-icon {
+    font-size: 14px;
+    line-height: 1;
     color: var(--text-muted);
 }
 
-/* Info Box */
 .info-box {
     background: #eff6ff;
     padding: 20px;
@@ -406,7 +386,6 @@
     overflow: hidden;
 }
 
-/* Encabezados de las Tarjetas */
 .comparison-headers {
     display: flex;
     position: relative;
@@ -418,7 +397,6 @@
     color: white;
 }
 
-/* Clases de colores para los encabezados de las tarjetas */
 .card-purple { background-color: var(--brand-purple); }
 .card-teal { background-color: var(--brand-teal); }
 .card-blue { background-color: var(--brand-blue); }
@@ -441,16 +419,29 @@
 }
 
 .square-logo {
-    width: 48px;
-    height: 48px;
-    color: #dc2626;
-    font-size: 24px;
+    width: auto !important;
+    min-width: 48px;
+    height: 48px !important;
+    padding: 0 12px !important;
+    font-size: 14px !important;
+    font-weight: 800 !important;
+    text-transform: lowercase !important;
+    letter-spacing: -0.5px !important;
+    border-radius: 12px;
+    background: #ffffff !important;
+    color: #dc2626 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
 }
 
 .duoc-logo {
     padding: 10px 16px;
+    height: 48px;
+    background: #ffffff !important;
     color: var(--brand-teal);
     font-size: 14px;
+    font-weight: 800;
 }
 
 .heart-icon {
@@ -483,7 +474,6 @@
     opacity: 0.8;
 }
 
-/* Insignia VS */
 .vs-badge {
     position: absolute;
     left: 50%;
@@ -508,7 +498,7 @@
     flex-direction: column;
 }
 
-.compare-row, .compre-row {
+.compare-row {
     display: flex;
     border-bottom: 1px solid var(--border-color);
 }
@@ -574,13 +564,6 @@
     color: var(--text-muted);
 }
 
-.text-desc {
-    font-size: 13px !important;
-    line-height: 1.5;
-    color: var(--text-dark) !important;
-}
-
-/* Acciones Inferiores */
 .bottom-actions {
     display: flex;
     justify-content: center;
@@ -590,9 +573,7 @@
     background: #f8fafc;
 }
 
-/* ==========================================
-   MENÚ DESPLEGABLE DE USUARIO (NATIVO <details>)
-========================================== */
+/* MENÚ DESPLEGABLE DE USUARIO */
 .user-menu-container {
     position: relative;
     display: inline-block;
@@ -667,9 +648,7 @@
     color: #b91c1c;
 }
 
-/* ==========================================
-   ASISTENTE DE IA FLOTANTE Y DESPLEGABLE
-========================================== */
+/* ASISTENTE DE IA FLOTANTE */
 #ai-assistant-wrapper {
     position: fixed;
     bottom: 25px;
