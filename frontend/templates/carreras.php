@@ -139,6 +139,8 @@ $url_comparar_sesion = 'comparar.php?' . http_build_query(['ids' => $_SESSION['c
     <title>Explorar carreras - Mi Ayudante</title>
     <link rel="stylesheet" href="/static/css/carreras.css">
     <link rel="stylesheet" href="/static/css/responsive.css">
+    <link rel="stylesheet" href="/static/css/chat.css">
+    <script src="/static/js/chat.js" defer></script>
 </head>
 <body class="portal-body">
 
@@ -374,6 +376,36 @@ $url_comparar_sesion = 'comparar.php?' . http_build_query(['ids' => $_SESSION['c
         <?php endif; ?>
 
     </main>
+
+    <!-- ASISTENTE DE IA FLOTANTE -->
+    <details id="ai-assistant-wrapper">
+        <summary id="ai-toggle-btn">
+            <span>🤖</span> Asistente IA
+        </summary>
+        
+        <div class="ai-chat-box">
+            <div class="ai-chat-header">
+                <div class="ai-header-title">
+                    <span>🤖</span>
+                    <div>
+                        <strong>Asistente Virtual IA</strong>
+                        <span>Orientación vocacional</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="ai-chat-body">
+                <div class="ai-message bot">
+                    ¡Hola! ¿Buscas alguna carrera en particular o necesitas ayuda con los filtros?
+                </div>
+            </div>
+
+            <form class="ai-chat-footer">
+                <input type="text" placeholder="Escribe tu duda aquí..." aria-label="Escribe tu duda" maxlength="500" autocomplete="off" required>
+                <button type="submit" aria-label="Enviar mensaje">➤</button>
+            </form>
+        </div>
+    </details>
 
 </body>
 </html>

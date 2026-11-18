@@ -48,6 +48,8 @@ $es_favorito = in_array($oferta_id, $_SESSION['favoritos']);
     <link rel="stylesheet" href="../static/css/carreras.css">
     <link rel="stylesheet" href="../static/css/detalle.css">
     <link rel="stylesheet" href="../static/css/responsive.css">
+    <link rel="stylesheet" href="/static/css/chat.css">
+    <script src="/static/js/chat.js" defer></script>
 </head>
 <body class="portal-body">
 
@@ -80,7 +82,7 @@ $es_favorito = in_array($oferta_id, $_SESSION['favoritos']);
                 </summary>
 
                 <div class="user-dropdown">
-                    <a href="pages/perfil.php" class="dropdown-item">Perfil</a>
+                    <a href="perfil.php" class="dropdown-item">Perfil</a>
                     <div class="dropdown-divider"></div>
                     <a href="logout.php" class="dropdown-item logout-item">Cerrar sesión</a>
                 </div>
@@ -259,10 +261,10 @@ $es_favorito = in_array($oferta_id, $_SESSION['favoritos']);
                 </div>
             </div>
 
-            <div class="ai-chat-footer">
-                <input type="text" placeholder="Escribe tu duda aquí...">
-                <button type="button">➤</button>
-            </div>
+            <form class="ai-chat-footer">
+                <input type="text" placeholder="Escribe tu duda aquí..." aria-label="Escribe tu duda" maxlength="500" autocomplete="off" required>
+                <button type="submit" aria-label="Enviar mensaje">➤</button>
+            </form>
         </div>
     </details>
 
