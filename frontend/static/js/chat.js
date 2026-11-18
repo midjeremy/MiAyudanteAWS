@@ -17,6 +17,24 @@
 
     cuerpo.setAttribute('aria-live', 'polite');
 
+    // [LEY 21.719] Aviso antes de escribir: los mensajes se procesan en OpenAI (EE. UU., transferencia
+    // internacional) y no se guardan en Mi Ayudante. Se inserta aquí para que aparezca en todas las
+    // páginas que tienen el widget, sin editar cada .php. Estilos en línea porque esas páginas no
+    // cargan privacidad.css.
+    const aviso = document.createElement('p');
+    aviso.className = 'ai-aviso-privacidad';
+    aviso.style.cssText = 'font-size:11.5px;line-height:1.4;color:#64748b;background:#f8fafc;'
+        + 'border-top:1px solid #e2e8f0;margin:0;padding:8px 12px;';
+    aviso.append('No escribas datos personales como tu RUT, dirección o información de salud. '
+        + 'Tus mensajes se procesan con OpenAI (EE. UU.) y Mi Ayudante no los guarda. ');
+    const enlace = document.createElement('a');
+    enlace.href = '/templates/privacidad.php';
+    enlace.target = '_blank';
+    enlace.textContent = 'Más información';
+    enlace.style.color = '#6b21a8';
+    aviso.appendChild(enlace);
+    formulario.parentNode.insertBefore(aviso, formulario);
+
     // sessionStorage puede fallar en modo privado: el chat sigue funcionando sin guardar
     function leerHistorial() {
         try {

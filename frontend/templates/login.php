@@ -29,6 +29,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $_SESSION['token_acceso'] = $resultado['datos']['access'];
             $_SESSION['token_refresco'] = $resultado['datos']['refresh'];
 
+            // [LEY 21.719] Cuentas creadas antes de la Política de privacidad (o con una versión
+            // anterior) deben aceptarla antes de seguir: Django lo informa en consentimiento_vigente.
+            if (($resultado['datos']['consentimiento_vigente'] ?? true) === false) {
+                $_SESSION['consentimiento_pendiente'] = true;
+                header("Location: aceptar_politica.php");
+                exit();
+            }
+
             header("Location: index.php");
             exit();
         } elseif ($resultado['codigo'] === 401) {
