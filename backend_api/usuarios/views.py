@@ -14,7 +14,8 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from Test_Ikigai.models import Resultado
 
-from .models import Consentimiento
+from . import doble_factor
+from .models import Consentimiento, SegundoFactor
 from .privacidad import EDAD_MINIMA_CUENTA, VERSION_POLITICA
 
 Usuario = get_user_model()
@@ -34,6 +35,10 @@ def aceptado(valor):
     if isinstance(valor, bool):
         return valor
     return isinstance(valor, (str, int)) and str(valor).strip().lower() in VALORES_ACEPTADOS
+
+
+def doble_factor_activo(usuario):
+    return SegundoFactor.objects.filter(usuario=usuario, activo=True).exists()
 
 
 def consentimiento_vigente(usuario):
@@ -103,18 +108,126 @@ class LoginView(AuthThrottledView):
         if usuario is None:
             return Response({'error': 'Correo o contraseña incorrectos.'}, status=status.HTTP_401_UNAUTHORIZED)
 
-        # El login con JWT no pasa por django.contrib.auth.login(), así que last_login no se actualizaba
-        # solo. Hace falta para el plazo de conservación: sin esto, purgar_cuentas_inactivas borraría
-        # cuentas que sí se usan (Ley 21.719, proporcionalidad).
-        update_last_login(None, usuario)
-        token = RefreshToken.for_user(usuario)
+        # Con el doble factor activo, la contraseña sola no basta: no se entrega el JWT, sino un token
+        # temporal (5 minutos) que se canjea en /2fa/verificar/ junto con el código de la app.
+        if doble_factor_activo(usuario):
+            return Response({'requiere_2fa': True, 'token_temporal': doble_factor.crear_token_temporal(usuario)})
+
+        return respuesta_sesion(usuario)
+
+
+def respuesta_sesion(usuario):
+    """Entrega los tokens JWT. La usan el login y la verificación del doble factor."""
+    # El login con JWT no pasa por django.contrib.auth.login(), así que last_login no se actualizaba
+    # solo. Hace falta para el plazo de conservación: sin esto, purgar_cuentas_inactivas borraría
+    # cuentas que sí se usan (Ley 21.719, proporcionalidad).
+    update_last_login(None, usuario)
+    token = RefreshToken.for_user(usuario)
+    return Response({
+        'access': str(token.access_token),
+        'refresh': str(token),
+        'usuario': datos_usuario(usuario),
+        # Cuentas creadas antes de la política (o con una versión anterior) deben aceptarla
+        'consentimiento_vigente': consentimiento_vigente(usuario),
+    })
+
+
+class DobleFactorThrottledView(APIView):
+    """Los códigos de 6 dígitos se adivinan probando: se limitan a 5 intentos por minuto."""
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'auth_2fa'
+
+
+class VerificarDobleFactorView(DobleFactorThrottledView):
+    """Segundo paso del login: canjea el token temporal y un código (TOTP o de recuperación) por el JWT."""
+    permission_classes = [AllowAny]
+    # Sin JWT todavía: no se intenta autenticar (un token vencido en la cabecera no debe dar 401)
+    authentication_classes = []
+
+    def post(self, request):
+        datos = request.data if isinstance(request.data, dict) else {}
+        codigo = datos.get('codigo')
+        try:
+            usuario_id = doble_factor.leer_token_temporal(datos.get('token_temporal'))
+        except doble_factor.TokenVencido:
+            # reiniciar: el frontend debe volver a pedir la contraseña (no sirve reintentar el código)
+            return Response({'error': 'La verificación venció. Inicia sesión de nuevo.', 'reiniciar': True},
+                            status=status.HTTP_401_UNAUTHORIZED)
+        except doble_factor.TokenInvalido:
+            return Response({'error': 'La verificación no es válida. Inicia sesión de nuevo.', 'reiniciar': True},
+                            status=status.HTTP_401_UNAUTHORIZED)
+
+        with transaction.atomic():
+            # Bloquea la fila: dos peticiones simultáneas no pueden gastar el mismo código de recuperación
+            segundo_factor = (SegundoFactor.objects.select_for_update().select_related('usuario')
+                              .filter(usuario_id=usuario_id, activo=True, usuario__is_active=True).first())
+            if segundo_factor is None:
+                return Response({'error': 'La verificación no es válida. Inicia sesión de nuevo.', 'reiniciar': True},
+                                status=status.HTTP_401_UNAUTHORIZED)
+            if not doble_factor.verificar_codigo(segundo_factor, codigo, permitir_recuperacion=True):
+                return Response({'error': 'El código no es correcto.'}, status=status.HTTP_401_UNAUTHORIZED)
+        return respuesta_sesion(segundo_factor.usuario)
+
+
+class ActivarDobleFactorView(APIView):
+    """Paso 1 de la activación: genera el secreto y lo entrega como URI otpauth:// y como QR."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        existente = SegundoFactor.objects.filter(usuario=request.user).first()
+        if existente is not None and existente.activo:
+            return Response({'error': 'El doble factor ya está activo. Desactívalo antes de configurarlo de nuevo.'},
+                            status=status.HTTP_409_CONFLICT)
+        # Cada intento de activación genera un secreto nuevo: un QR mostrado antes deja de servir
+        secreto = doble_factor.nuevo_secreto()
+        SegundoFactor.objects.update_or_create(
+            usuario=request.user, defaults={'secreto': secreto, 'activo': False, 'codigos_recuperacion': []}
+        )
+        uri = doble_factor.uri_aprovisionamiento(secreto, request.user)
         return Response({
-            'access': str(token.access_token),
-            'refresh': str(token),
-            'usuario': datos_usuario(usuario),
-            # Cuentas creadas antes de la política (o con una versión anterior) deben aceptarla
-            'consentimiento_vigente': consentimiento_vigente(usuario),
+            'otpauth_uri': uri,
+            'qr_png_base64': doble_factor.qr_png_base64(uri),
+            # Para escribirlo a mano si la app no puede leer el QR
+            'secreto': secreto,
         })
+
+
+class ConfirmarDobleFactorView(DobleFactorThrottledView):
+    """Paso 2 de la activación: el primer código prueba que la app quedó bien configurada."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        segundo_factor = SegundoFactor.objects.filter(usuario=request.user).first()
+        if segundo_factor is None:
+            return Response({'error': 'Primero genera el código QR.'}, status=status.HTTP_400_BAD_REQUEST)
+        if segundo_factor.activo:
+            return Response({'error': 'El doble factor ya está activo.'}, status=status.HTTP_409_CONFLICT)
+        if not doble_factor.verificar_codigo(segundo_factor, request.data.get('codigo')):
+            return Response({'error': 'El código no es correcto.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        codigos = doble_factor.nuevos_codigos_recuperacion()
+        segundo_factor.activo = True
+        segundo_factor.codigos_recuperacion = [doble_factor.hash_codigo(c) for c in codigos]
+        segundo_factor.save(update_fields=['activo', 'codigos_recuperacion'])
+        # Los códigos en claro solo se entregan aquí, una vez: en la base de datos quedan como hash
+        return Response({'activo': True, 'codigos_recuperacion': codigos})
+
+
+class DesactivarDobleFactorView(DobleFactorThrottledView):
+    """Desactiva el doble factor. Pide un código válido (de la app o de recuperación)."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        with transaction.atomic():
+            segundo_factor = SegundoFactor.objects.select_for_update().filter(
+                usuario=request.user, activo=True).first()
+            if segundo_factor is None:
+                return Response({'error': 'El doble factor no está activo.'}, status=status.HTTP_400_BAD_REQUEST)
+            if not doble_factor.verificar_codigo(segundo_factor, request.data.get('codigo'),
+                                                 permitir_recuperacion=True):
+                return Response({'error': 'El código no es correcto.'}, status=status.HTTP_400_BAD_REQUEST)
+            segundo_factor.delete()
+        return Response({'activo': False})
 
 
 class PerfilView(APIView):
@@ -122,7 +235,8 @@ class PerfilView(APIView):
 
     def get(self, request):
         return Response({'usuario': datos_usuario(request.user),
-                         'consentimiento_vigente': consentimiento_vigente(request.user)})
+                         'consentimiento_vigente': consentimiento_vigente(request.user),
+                         'doble_factor_activo': doble_factor_activo(request.user)})
 
     def patch(self, request):
         """Derecho de rectificación: el titular corrige su nombre y apellidos."""
@@ -193,6 +307,8 @@ class MisDatosView(APIView):
                 }
                 for r in Resultado.objects.filter(usuario=usuario)
             ],
+            # El secreto y los códigos de recuperación no se exportan: son credenciales, no datos personales
+            'doble_factor': {'activo': doble_factor_activo(usuario)},
             'no_almacenado': 'Los mensajes del asistente no se guardan en Mi Ayudante.',
         }
         respuesta = Response(datos)
