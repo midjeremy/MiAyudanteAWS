@@ -96,3 +96,65 @@ function carrera_a_tarjeta(array $row): array{
     $tarjeta['es_carrera'] = true;
     return $tarjeta;
 }
+
+// Detalle de una oferta (detalle.php). La API no entrega objetivos ni campo laboral redactados: en esas
+// secciones se muestran los datos reales que sí existen (título, nivel, duración, área) y se remite a la
+// malla oficial, sin inventar contenido sobre la carrera.
+function oferta_a_detalle(array $row): array{
+    $nombre = $row['carrera'] ?? 'Carrera';
+    $institucion = $row['institucion'] ?? '';
+    $nivel = $row['nivel'] ?? '';
+    $sede = $row['sede'] ?? '';
+    $region = $row['region'] ?? '';
+    $jornada = $row['jornada'] ?? '';
+    $modalidad = $row['modalidad'] ?? '';
+    $area = $row['area_estudio_nombre'] ?? '';
+    $duracion_publicada = trim((string) ($row['duracion_texto'] ?? ''));
+    $duracion = duracion_de_oferta($row);
+    $arancel = arancel_de_oferta($row);
+
+    $ubicacion = $sede . ($region ? ' (' . $region . ')' : '');
+    $descripcion = $nombre . ($nivel ? ' es una carrera de nivel ' . mb_strtolower($nivel) : ' es una carrera')
+        . ($institucion ? ' de ' . $institucion : '') . '.'
+        . ($ubicacion ? ' Se imparte en la sede ' . $ubicacion : '')
+        . ($jornada ? ', jornada ' . mb_strtolower($jornada) : '')
+        . ($modalidad ? ', modalidad ' . mb_strtolower($modalidad) : '') . '.'
+        . "\nLa información se actualiza cada semana desde el sitio oficial de la institución.";
+
+    $matricula = 'No informada';
+    if (!empty($row['valor_matricula']) && (float) $row['valor_matricula'] > 0) {
+        $periodo = $row['matricula_periodo'] ?? '';
+        $matricula = formatear_clp($row['valor_matricula']) . ($periodo ? ' (' . $periodo . ')' : '');
+    }
+
+    $objetivos = [
+        'Título que otorga: ' . (($row['titulo'] ?? '') ?: 'detallado en la malla oficial'),
+        'Nivel de formación: ' . ($nivel ?: 'no informado'),
+        'Duración: ' . $duracion . ($duracion_publicada && $duracion_publicada !== $duracion ? ' (' . $duracion_publicada . ')' : ''),
+    ];
+    $campo_laboral = [];
+    if ($area) {
+        $campo_laboral[] = 'Área de estudio: ' . $area
+            . (!empty($row['area_institucion']) ? ' (' . $row['area_institucion'] . ' en la institución)' : '');
+    }
+    $campo_laboral[] = 'El perfil de egreso y el campo laboral detallados están en la malla oficial de la carrera.';
+
+    return [
+        'id' => (int) ($row['id'] ?? 0),
+        'carrera_id' => (int) ($row['carrera_id'] ?? 0),
+        'nombre' => $nombre,
+        'institucion' => $institucion,
+        'inst_clave' => strtolower($row['institucion_codigo'] ?? ''),
+        'descripcion' => $descripcion,
+        'objetivos_badge' => $nivel ?: 'Formación',
+        'objetivos' => $objetivos,
+        'campo_badge' => $area ?: 'Área no informada',
+        'campo_laboral' => $campo_laboral,
+        'matricula' => $matricula,
+        'arancel' => $arancel['texto'] . ($arancel['monto'] ? ' · ' . $arancel['periodo'] : ''),
+        'duracion_texto' => $duracion,
+        'campus_texto' => $ubicacion . (!empty($row['direccion']) ? ' · ' . $row['direccion'] : ''),
+        'modalidad_texto' => implode(' · ', array_filter([$modalidad, $jornada])) ?: 'No informada',
+        'malla_pdf' => $row['malla_url'] ?? '',
+    ];
+}

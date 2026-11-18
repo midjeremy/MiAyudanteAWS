@@ -1,11 +1,16 @@
 <?php
-// Dirección de la API Django: ajusta la IP/URL por defecto si no estás en local
-// Usar el dominio HTTPS: la IP por HTTP responde 301 hacia https://mi-ayudante.cl y cURL no lo sigue
-define('API_BASE_URL', getenv('MIAYUDANTE_API_URL') ?: 'https://mi-ayudante.cl');
+// Dirección interna de Django: en el servidor, PHP y Django están en la misma máquina (Nginx define
+// MIAYUDANTE_API_URL=http://127.0.0.1:8000). Para probar en local contra producción, definir la variable
+// con el dominio HTTPS (https://mi-ayudante.cl): la IP por HTTP responde 301 y cURL no lo sigue.
+// No usar el dominio público como valor por defecto: Django vería la IP del propio servidor y todos los
+// visitantes compartirían el mismo límite de intentos de login.
+define('API_BASE_URL', getenv('MIAYUDANTE_API_URL') ?: 'http://127.0.0.1:8000');
 
-function api_solicitud(string $metodo, string $ruta, ?array $datos = null, ?string $token = null): array{
+// $espera: segundos máximos de la llamada. El asistente (chat.php) necesita más que el resto (50 s).
+function api_solicitud(string $metodo, string $ruta, ?array $datos = null, ?string $token = null, int $espera = 5): array{
     $cabeceras = [
         'Accept: application/json',
+        // Django limita los intentos de login por IP: se envía la del visitante
         'X-Forwarded-For: ' . ($_SERVER['REMOTE_ADDR'] ?? ''),
     ];
     if ($datos !== null) {
@@ -18,7 +23,7 @@ function api_solicitud(string $metodo, string $ruta, ?array $datos = null, ?stri
     $ch = curl_init(API_BASE_URL . $ruta);
     curl_setopt_array($ch,[
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => 5,
+        CURLOPT_TIMEOUT => $espera,
         CURLOPT_CUSTOMREQUEST => $metodo,
         CURLOPT_HTTPHEADER => $cabeceras,
     ]);

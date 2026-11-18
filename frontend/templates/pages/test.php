@@ -145,7 +145,12 @@ function porcentaje_texto($valor): string {
             <h1>Test vocacional Ikigai</h1>
             <p>
                 Responde cada afirmación según cuánto te representa. No hay respuestas correctas ni mejores que otras:
-                el resultado es orientativo, no es un diagnóstico y no reemplaza la orientación de profesionales.
+                el resultado es orientativo, no es un diagnóstico ni una decisión sobre ti, y no reemplaza la orientación de profesionales.
+                <?php if ($usuario): ?>
+                    <!-- [LEY 21.719] El resultado queda guardado en la cuenta y el titular puede borrarlo -->
+                    Como iniciaste sesión, tu resultado queda guardado en tu cuenta y puedes borrarlo cuando quieras desde
+                    <a href="../perfil.php#privacidad">tu perfil</a>.
+                <?php endif; ?>
             </p>
             <?php if (!$usuario): ?>
                 <p class="test-nota">
