@@ -102,6 +102,8 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_THROTTLE_RATES': {
         'auth': '20/min',
+        # Códigos del doble factor (6 dígitos): pocos intentos para que no se puedan adivinar
+        'auth_2fa': '5/min',
         'chatbot': '10/min',
     },
     # Nginx o PHP envían la IP real del visitante en X-Forwarded-For

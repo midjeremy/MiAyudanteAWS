@@ -25,3 +25,29 @@ class Consentimiento(models.Model):
 
     def __str__(self):
         return f'{self.usuario} aceptó la política {self.version_politica}'
+
+
+class SegundoFactor(models.Model):
+    """Doble factor con app autenticadora (TOTP, RFC 6238).
+
+    Se usa TOTP y no un código por correo porque en AWS Learner Lab el envío de correos (SES) suele
+    estar restringido. Los códigos de recuperación se guardan como hash: son de un solo uso y solo se
+    muestran al titular una vez, al activar el doble factor.
+    """
+    usuario = models.OneToOneField(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='segundo_factor'
+    )
+    secreto = models.CharField(max_length=64, help_text='Secreto TOTP en base32.')
+    activo = models.BooleanField(default=False)
+    codigos_recuperacion = models.JSONField(
+        default=list, blank=True, help_text='Hashes de los códigos de recuperación aún no usados.'
+    )
+    creado_en = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'segundo factor'
+        verbose_name_plural = 'segundos factores'
+
+    def __str__(self):
+        estado = 'activo' if self.activo else 'pendiente'
+        return f'Doble factor de {self.usuario} ({estado})'

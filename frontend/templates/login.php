@@ -22,9 +22,17 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         // Django valida la contraseña y entrega un token JWT
         $resultado = api_post('/api/v1/auth/login/', ['correo' => $correo, 'password' => $password]);
 
-        if ($resultado['codigo'] === 200) {
+        if ($resultado['codigo'] === 200 && !empty($resultado['datos']['requiere_2fa'])) {
+            // Doble factor activo: la contraseña es correcta, pero falta el código de la app.
+            // Django entrega un token temporal (5 minutos) que verificar_2fa.php canjea por el JWT.
+            session_regenerate_id(true);
+            $_SESSION['token_2fa'] = $resultado['datos']['token_temporal'];
+            header("Location: verificar_2fa.php");
+            exit();
+        } elseif ($resultado['codigo'] === 200) {
             // Nuevo identificador de sesión al iniciar sesión, para evitar secuestro de sesión
             session_regenerate_id(true);
+            unset($_SESSION['token_2fa']);
             $_SESSION['usuario'] = $resultado['datos']['usuario'];
             $_SESSION['token_acceso'] = $resultado['datos']['access'];
             $_SESSION['token_refresco'] = $resultado['datos']['refresh'];
