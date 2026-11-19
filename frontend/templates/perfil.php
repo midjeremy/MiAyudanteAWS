@@ -130,6 +130,7 @@ function fecha_corta(?string $iso): string {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Perfil - Mi Ayudante</title>
+    <link rel="icon" type="image/png"  href="/static/img/Birrete.ico">
     <link rel="stylesheet" href="/static/css/carreras.css">
     <link rel="stylesheet" href="/static/css/perfil.css">
     <link rel="stylesheet" href="/static/css/privacidad.css"><!-- [LEY 21.719] -->
@@ -142,7 +143,9 @@ function fecha_corta(?string $iso): string {
         <div class="nav-brand">
             <span class="nav-logo-icon">🎓</span>
             <div class="nav-logo-text">
-                <strong>Mi Ayudante</strong>
+                <a href="index.php">
+                    <strong style="color: #000000;">Mi Ayudante</strong>
+                </a>
                 <span>Tu futuro, nuestra guía</span>
             </div>
         </div>

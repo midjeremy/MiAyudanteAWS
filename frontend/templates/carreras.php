@@ -137,6 +137,7 @@ $url_comparar_sesion = 'comparar.php?' . http_build_query(['ids' => $_SESSION['c
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Explorar carreras - Mi Ayudante</title>
+    <link rel="icon" type="image/png"  href="/static/img/Birrete.ico">
     <link rel="stylesheet" href="/static/css/carreras.css">
     <link rel="stylesheet" href="/static/css/responsive.css">
     <link rel="stylesheet" href="/static/css/chat.css">
@@ -149,7 +150,9 @@ $url_comparar_sesion = 'comparar.php?' . http_build_query(['ids' => $_SESSION['c
         <div class="nav-brand">
             <span class="nav-logo-icon">🎓</span>
             <div class="nav-logo-text">
-                <strong>Mi Ayudante</strong>
+                <a href="index.php">
+                    <strong style="color: #000000;">Mi Ayudante</strong>
+                </a>
                 <span>Tu futuro, nuestra guía</span>
             </div>
         </div>

@@ -39,6 +39,7 @@ if (!empty($ids_guardados)) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mis Carreras Guardadas - Mi Ayudante</title>
+    <link rel="icon" type="image/png"  href="/static/img/Birrete.ico">
     <link rel="stylesheet" href="/static/css/carreras.css">
     <link rel="stylesheet" href="/static/css/responsive.css">
     <link rel="stylesheet" href="/static/css/chat.css">
@@ -51,7 +52,9 @@ if (!empty($ids_guardados)) {
         <div class="nav-brand">
             <span class="nav-logo-icon">🎓</span>
             <div class="nav-logo-text">
-                <strong>Mi Ayudante</strong>
+                <a href="index.php">
+                    <strong style="color: #000000;">Mi Ayudante</strong>
+                </a>
                 <span>Tu futuro, nuestra guía</span>
             </div>
         </div>
