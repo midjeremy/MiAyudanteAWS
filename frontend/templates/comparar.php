@@ -125,7 +125,9 @@ $carrera2 = $carreras_seleccionadas[1] ?? null;
         <div class="nav-brand">
             <span class="nav-logo-icon">🎓</span>
             <div class="nav-logo-text">
-                <strong>Mi Ayudante</strong>
+                <a href="index.php">
+                    <strong style="color: #000000;">Mi Ayudante</strong>
+                </a>
                 <span>Tu futuro, nuestra guía</span>
             </div>
         </div>

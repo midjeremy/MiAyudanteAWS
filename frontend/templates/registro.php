@@ -53,6 +53,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Regístrate - Mi Ayudante</title>
+    <link rel="icon" type="image/png"  href="/static/img/Birrete.ico">
     <link rel="stylesheet" href="/static/css/registro.css">
     <link rel="stylesheet" href="/static/css/responsive.css">
     <!-- [LEY 21.719] Estilos de las casillas de consentimiento -->
