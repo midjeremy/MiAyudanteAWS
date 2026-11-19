@@ -321,6 +321,13 @@ function fecha_corta(?string $iso): string {
                     <a href="mis_datos.php" class="btn-perfil btn-secundario">Descargar mis datos</a>
                 </div>
 
+                <!-- Doble factor (app autenticadora) -->
+                <div class="privacidad-bloque">
+                    <h4>Verificación en dos pasos</h4>
+                    <p>Protege tu cuenta pidiendo, además de la contraseña, un código de una app autenticadora.</p>
+                    <a href="seguridad.php" class="btn-perfil btn-secundario">Configurar seguridad</a>
+                </div>
+
                 <!-- Supresión de la cuenta (también revoca el consentimiento) -->
                 <form method="POST" action="perfil.php" class="privacidad-bloque privacidad-peligro"
                       onsubmit="return confirm('Se eliminarán tu cuenta y todos tus resultados del test. No se puede deshacer. ¿Continuar?');">
