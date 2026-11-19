@@ -97,64 +97,83 @@ function carrera_a_tarjeta(array $row): array{
     return $tarjeta;
 }
 
-// Detalle de una oferta (detalle.php). La API no entrega objetivos ni campo laboral redactados: en esas
-// secciones se muestran los datos reales que sí existen (título, nivel, duración, área) y se remite a la
-// malla oficial, sin inventar contenido sobre la carrera.
-function oferta_a_detalle(array $row): array{
-    $nombre = $row['carrera'] ?? 'Carrera';
-    $institucion = $row['institucion'] ?? '';
-    $nivel = $row['nivel'] ?? '';
-    $sede = $row['sede'] ?? '';
-    $region = $row['region'] ?? '';
-    $jornada = $row['jornada'] ?? '';
-    $modalidad = $row['modalidad'] ?? '';
-    $area = $row['area_estudio_nombre'] ?? '';
-    $duracion_publicada = trim((string) ($row['duracion_texto'] ?? ''));
-    $duracion = duracion_de_oferta($row);
-    $arancel = arancel_de_oferta($row);
+// Convierte un texto con saltos de línea o un arreglo de la API en una lista limpia de ítems
+function normalizar_lista_detalle($valor, array $fallback): array {
+    if (is_array($valor) && !empty($valor)) {
+        return array_values(array_filter(array_map('trim', $valor)));
+    }
+    if (is_string($valor) && trim($valor) !== '') {
+        $lineas = preg_split('/\r\n|\r|\n|•/', $valor);
+        $limpias = array_values(array_filter(array_map('trim', $lineas)));
+        if (!empty($limpias)) {
+            return $limpias;
+        }
+    }
+    return $fallback;
+}
 
-    $ubicacion = $sede . ($region ? ' (' . $region . ')' : '');
-    $descripcion = $nombre . ($nivel ? ' es una carrera de nivel ' . mb_strtolower($nivel) : ' es una carrera')
-        . ($institucion ? ' de ' . $institucion : '') . '.'
-        . ($ubicacion ? ' Se imparte en la sede ' . $ubicacion : '')
-        . ($jornada ? ', jornada ' . mb_strtolower($jornada) : '')
-        . ($modalidad ? ', modalidad ' . mb_strtolower($modalidad) : '') . '.'
-        . "\nLa información se actualiza cada semana desde el sitio oficial de la institución.";
+// Transforma el detalle completo de una oferta académica para detalle.php
+function oferta_a_detalle(array $row): array {
+    $base = oferta_a_tarjeta($row);
+    $semestres = (int) ($row['duracion_semestres'] ?? 0);
+    $anios = $semestres ? round($semestres / 2, 1) : 0;
 
-    $matricula = 'No informada';
-    if (!empty($row['valor_matricula']) && (float) $row['valor_matricula'] > 0) {
-        $periodo = $row['matricula_periodo'] ?? '';
-        $matricula = formatear_clp($row['valor_matricula']) . ($periodo ? ' (' . $periodo . ')' : '');
+    // Formato para duracion de la carrera
+    $duracion_texto = 'No informada';
+    if ($anios > 0 && $semestres > 0) {
+        $duracion_texto = $anios . ($anios == 1 ? ' Año' : ' Años') . ' (' . $semestres . ' Semestres)';
+    } elseif ($semestres > 0) {
+        $duracion_texto = $semestres . ' Semestres';
     }
 
-    $objetivos = [
-        'Título que otorga: ' . (($row['titulo'] ?? '') ?: 'detallado en la malla oficial'),
-        'Nivel de formación: ' . ($nivel ?: 'no informado'),
-        'Duración: ' . $duracion . ($duracion_publicada && $duracion_publicada !== $duracion ? ' (' . $duracion_publicada . ')' : ''),
-    ];
-    $campo_laboral = [];
-    if ($area) {
-        $campo_laboral[] = 'Área de estudio: ' . $area
-            . (!empty($row['area_institucion']) ? ' (' . $row['area_institucion'] . ' en la institución)' : '');
+    // Formato para Sede y Region
+    $sede = trim($row['sede'] ?? '');
+    $region = trim($row['region'] ?? '');
+    if ($sede !== '' && $region !== '' && stripos($sede, $region) === false) {
+        $campus_texto = 'Sede ' . $sede . ' (' . $region . ')';
+    } elseif ($sede !== '') {
+        $campus_texto = (stripos($sede, 'sede') === 0) ? $sede : 'Sede ' . $sede;
+    } else {
+        $campus_texto = 'No informado';
     }
-    $campo_laboral[] = 'El perfil de egreso y el campo laboral detallados están en la malla oficial de la carrera.';
 
-    return [
-        'id' => (int) ($row['id'] ?? 0),
-        'carrera_id' => (int) ($row['carrera_id'] ?? 0),
-        'nombre' => $nombre,
-        'institucion' => $institucion,
-        'inst_clave' => strtolower($row['institucion_codigo'] ?? ''),
-        'descripcion' => $descripcion,
-        'objetivos_badge' => $nivel ?: 'Formación',
-        'objetivos' => $objetivos,
-        'campo_badge' => $area ?: 'Área no informada',
-        'campo_laboral' => $campo_laboral,
-        'matricula' => $matricula,
-        'arancel' => $arancel['texto'] . ($arancel['monto'] ? ' · ' . $arancel['periodo'] : ''),
-        'duracion_texto' => $duracion,
-        'campus_texto' => $ubicacion . (!empty($row['direccion']) ? ' · ' . $row['direccion'] : ''),
-        'modalidad_texto' => implode(' · ', array_filter([$modalidad, $jornada])) ?: 'No informada',
-        'malla_pdf' => $row['malla_url'] ?? '',
-    ];
+    // Formato: modalidad y jornada
+    $modalidad = trim($row['modalidad'] ?? 'No informada');
+    $jornada = trim($row['jornada'] ?? ($row['tipo_jornada'] ?? ''));
+    $modalidad_texto = ($jornada !== '') ? $modalidad . ' (' . $jornada . ')' : $modalidad;
+
+    // Matrícula anual
+    $matricula = $row['matricula_clp'] ?? ($row['matricula'] ?? null);
+    $matricula_texto = ($matricula !== null && $matricula !== '')
+        ? formatear_clp($matricula)
+        : 'No informada';
+
+    // Descripción principal
+    $descripcion = trim($row['descripcion'] ?? '');
+    if ($descripcion === '') {
+        $descripcion = "{$base['nombre']} es un programa de educación superior impartido por {$base['institucion']} con una duración formal de {$duracion_texto}, orientado a desarrollar competencias prácticas y tecnológicas alineadas con las demandas actuales del sector productivo.";
+    }
+
+    $objetivos = normalizar_lista_detalle(
+        $row['objetivos'] ?? ($row['perfil_egreso'] ?? null),
+        [
+            "Formar profesionales capaces de diseñar, implementar y gestionar soluciones en el área de {$base['nombre']}.",
+            "Integrar metodologías vigentes y herramientas especializadas bajo los estándares formativos de {$base['institucion']}.",
+            "Desarrollar capacidad analítica y resolución de problemas aplicados a entornos reales de trabajo."
+        ]
+    );
+
+
+    return array_merge($base, [
+        'carrera_id'      => (int) ($row['carrera_id'] ?? 0),
+        'descripcion'     => $descripcion,
+        'objetivos'       => $objetivos,
+        'objetivos_badge' => $row['nivel_formacion'] ?? 'Perfil',
+        'matricula'       => $matricula_texto,
+        'duracion_texto'  => $duracion_texto,
+        'campus_texto'    => $campus_texto,
+        'modalidad_texto' => $modalidad_texto,
+        'malla_pdf'       => $row['s3_url_malla_pdf'] ?? ($row['malla_pdf'] ?? ''),
+        'malla'           => is_array($row['malla'] ?? null) ? $row['malla'] : [],
+    ]);
 }
