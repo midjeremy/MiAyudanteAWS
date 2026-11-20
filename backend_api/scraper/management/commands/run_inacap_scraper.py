@@ -4,7 +4,7 @@ import re
 import requests
 import io
 from urllib.parse import urlsplit
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.conf import settings
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -20,8 +20,8 @@ from selenium.common.exceptions import (
 # Importar modelos de la aplicación 'scraper'
 from scraper.catalogos import area_inacap, clasificar_area, clasificar_nivel, normalizar_jornada, normalizar_texto, region_de_sede
 from scraper.etl import (
-    TASA_MINIMA_EXITO, cerrar_lote, cerrar_lotes_colgados, crear_cliente_s3, describir_error,
-    retirar_ofertas_obsoletas, subir_json_crudo, tasa_exito,
+    TASA_MINIMA_EXITO, avisar_lote, cerrar_lote, cerrar_lotes_colgados, crear_cliente_s3, describir_error,
+    motivo_para_omitir, retirar_ofertas_obsoletas, subir_json_crudo, tasa_exito,
 )
 from scraper.models import Institucion, Carrera, LoteScrapingS3, Sede, Jornada, OfertaAcademica
 
@@ -30,6 +30,18 @@ MINIMO_CARRERAS = 60
 INTENTOS_ARANCELES = 2
 # Mensajes de Chrome cuando la pestaña o la sesión murieron: ya no sirve seguir con el mismo navegador
 SENALES_NAVEGADOR_PERDIDO = ('no such window', 'tab crashed', 'session deleted', 'disconnected', 'invalid session id')
+
+
+def clave_malla(url_carrera, nombre_carrera=''):
+    """Nombre del PDF de la malla en S3, único por carrera.
+
+    Antes se usaba el nombre de la carrera, que se repite entre carreras distintas (mismo nombre en otra área o
+    nivel): la segunda malla pisaba a la primera. La ruta de la página de la carrera sí es única.
+    """
+    ruta = urlsplit(url_carrera or '').path.strip('/')
+    base = ruta.rsplit('/', 1)[-1] if ruta else nombre_carrera
+    clave = re.sub(r'[^a-z0-9]+', '_', normalizar_texto(base)).strip('_')
+    return clave[:150] or 'sin_nombre'
 
 
 def navegador_perdido(error):
@@ -46,6 +58,8 @@ class Command(BaseCommand):
         parser.add_argument('--limite', type=int, help='Procesa solo esta cantidad de carreras')
         parser.add_argument('--con-ventana', action='store_true', help='Muestra Chrome en lugar de usar modo headless')
         parser.add_argument('--carrera', action='append', help='Procesa solo las carreras cuya URL contiene este texto (repetible)')
+        parser.add_argument('--si-desactualizado', type=int, metavar='DIAS',
+                            help='Solo extrae si no hay un lote con carga en estos días ni otro intento en las últimas 24 h (cron cada hora)')
 
     def crear_navegador(self, con_ventana=False):
         chrome_options = Options()
@@ -96,15 +110,14 @@ class Command(BaseCommand):
         except:
             return None
 
-    def procesar_malla_s3(self, url_pdf, nombre_carrera, s3_client, bucket_name):
+    def procesar_malla_s3(self, url_pdf, nombre_carrera, s3_client, bucket_name, url_carrera=''):
         try:
             self.stdout.write(f"  -> Descargando malla: {url_pdf}")
             respuesta = requests.get(url_pdf, timeout=30)
             respuesta.raise_for_status()
             
             archivo_en_memoria = io.BytesIO(respuesta.content)
-            nombre_limpio = nombre_carrera.lower().replace(" ", "_").replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u")
-            ruta_s3 = f"mallas/inacap/{nombre_limpio}.pdf"
+            ruta_s3 = f"mallas/inacap/{clave_malla(url_carrera, nombre_carrera)}.pdf"
             
             s3_client.upload_fileobj(
                 archivo_en_memoria, 
@@ -119,11 +132,6 @@ class Command(BaseCommand):
             return None
 
     def handle(self, *args, **kwargs):
-        self.stdout.write(self.style.WARNING('Iniciando pipeline ETL maestro de INACAP...'))
-        
-        s3_client = crear_cliente_s3()
-        bucket_name = getattr(settings, 'AWS_STORAGE_BUCKET_NAME', 'tu-bucket-mallas')
-
         institucion, _ = Institucion.objects.get_or_create(
             codigo="INACAP",
             defaults={"nombre": "Instituto Nacional de Capacitación Profesional", "sitio_web": "https://www.inacap.cl"}
@@ -132,6 +140,17 @@ class Command(BaseCommand):
         colgados = cerrar_lotes_colgados(institucion)
         if colgados:
             self.stdout.write(self.style.WARNING(f'[*] {colgados} lote(s) interrumpido(s) marcados como ERROR.'))
+        if kwargs['si_desactualizado'] is not None:
+            motivo = motivo_para_omitir(institucion, kwargs['si_desactualizado'])
+            if motivo:
+                # Cron lo ejecuta cada hora: el aviso solo se muestra con -v 2 para no llenar el log
+                if kwargs['verbosity'] > 1:
+                    self.stdout.write(f'INACAP al día, no se extrae: {motivo}.')
+                return
+
+        self.stdout.write(self.style.WARNING('Iniciando pipeline ETL maestro de INACAP...'))
+        s3_client = crear_cliente_s3()
+        bucket_name = getattr(settings, 'AWS_STORAGE_BUCKET_NAME', 'tu-bucket-mallas')
         lote = LoteScrapingS3.objects.create(institucion=institucion, estado_etl='EN_PROCESO')
         errores = []
         carreras_ok = 0
@@ -196,7 +215,7 @@ class Command(BaseCommand):
                             EC.presence_of_element_located((By.XPATH, "//a[contains(@href, 'repo.inacapmovil.cl/pdf_mallas')]"))
                         )
                         url_pdf = enlace_pdf.get_attribute("href")
-                        ruta_s3 = self.procesar_malla_s3(url_pdf, nombre_carrera, s3_client, bucket_name)
+                        ruta_s3 = self.procesar_malla_s3(url_pdf, nombre_carrera, s3_client, bucket_name, enlace)
                     except TimeoutException:
                         self.stdout.write(self.style.WARNING(f"  [!] Sin enlace PDF visible para {nombre_carrera}"))
                         errores.append(f"Sin malla: {nombre_carrera}")
@@ -475,6 +494,7 @@ class Command(BaseCommand):
             retiradas = retirar_ofertas_obsoletas(institucion, ids_vigentes) if carga_completa else 0
             estado = 'COMPLETADO' if tasa >= TASA_MINIMA_EXITO and not errores else 'PARCIAL'
             cerrar_lote(lote, estado, carreras_ok, total_carreras, len(ids_vigentes), errores)
+            avisar_lote(lote)  # solo envía correo si quedó PARCIAL
             self.stdout.write(self.style.SUCCESS(
                 f'\n✅ Lote {lote.id} ({estado}): {carreras_ok}/{total_carreras} carreras, '
                 f'{len(ids_vigentes)} ofertas, {retiradas} retiradas, {len(errores)} errores. KPI-01: {tasa}%.'
@@ -483,5 +503,8 @@ class Command(BaseCommand):
         except Exception as e:
             self.stdout.write(self.style.ERROR(f'❌ Error crítico en el scraper maestro: {str(e)}'))
             cerrar_lote(lote, 'ERROR', carreras_ok, total_carreras, len(ids_vigentes), [*errores, f'Crítico: {describir_error(e, 500)}'])
+            avisar_lote(lote)
+            # Código de salida 1 (antes terminaba en 0 y el fallo solo se veía leyendo el log)
+            raise CommandError(f'Lote {lote.id} en ERROR: {describir_error(e)}') from e
         finally:
             driver.quit()

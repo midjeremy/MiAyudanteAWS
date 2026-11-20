@@ -181,12 +181,49 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 # Integración del Agente Conversacional[cite: 1]
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 
-# Email
-# https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
+# Correo (Django 6.1 usa MAILERS)
+# Cloudflare Email Routing solo RECIBE correo (privacidad@, contacto@ y alertas@ reenvían a Gmail); para ENVIAR se
+# usa un servidor SMTP. Se configura en el .env de la raíz con SMTP_HOST, SMTP_PORT, SMTP_USUARIO y SMTP_CLAVE.
+# Sin SMTP_HOST (desarrollo y CI) los correos se escriben en la consola y no salen del equipo.
+CORREO_ALERTAS = os.getenv('CORREO_ALERTAS', 'alertas@mi-ayudante.cl').strip()
+DEFAULT_FROM_EMAIL = os.getenv('CORREO_REMITENTE', f'Mi Ayudante <{CORREO_ALERTAS}>').strip()
+SERVER_EMAIL = DEFAULT_FROM_EMAIL
+# Destinatarios de mail_admins: avisos de lotes ETL fallidos y errores 500 de la API (con DEBUG=False)
+ADMINS = [CORREO_ALERTAS]
+EMAIL_SUBJECT_PREFIX = '[Mi Ayudante] '
 
-MAILERS = {
+SMTP_HOST = os.getenv('SMTP_HOST', '').strip()
+if SMTP_HOST:
+    MAILERS = {
+        'default': {
+            'BACKEND': 'django.core.mail.backends.smtp.EmailBackend',
+            'OPTIONS': {
+                'host': SMTP_HOST,
+                'port': int(os.getenv('SMTP_PORT', '587')),
+                'username': os.getenv('SMTP_USUARIO', ''),
+                'password': os.getenv('SMTP_CLAVE', ''),
+                # 587 con STARTTLS; AWS bloquea el puerto 25 de salida en EC2
+                'use_tls': os.getenv('SMTP_TLS', 'True') == 'True',
+                'timeout': 15,
+            },
+        },
+    }
+else:
+    MAILERS = {
+        'default': {
+            'BACKEND': 'django.core.mail.backends.console.EmailBackend',
+        },
+    }
+
+# Caché compartida en PostgreSQL. Los límites de intentos de DRF (login, 2FA, chatbot) se cuentan en la caché:
+# con la caché en memoria por defecto, cada uno de los 3 workers de Gunicorn llevaba su propio contador y el
+# límite real era el triple (5/min del 2FA eran 15/min), y se reiniciaba en cada deploy. La tabla la crea
+# "manage.py createcachetable" (el deploy lo ejecuta; los tests la crean solos).
+CACHES = {
     'default': {
-        'BACKEND': 'django.core.mail.backends.console.EmailBackend',
+        'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
+        'LOCATION': 'miayudante_cache',
+        'OPTIONS': {'MAX_ENTRIES': 10000},
     },
 }
 

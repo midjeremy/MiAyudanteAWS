@@ -56,6 +56,7 @@ jobs:
             sudo cp infraestructura_aws/servidor/nginx-miayudante.conf /etc/nginx/sites-available/miayudante
             sudo install -m 644 infraestructura_aws/servidor/miayudante-scraper /etc/cron.d/miayudante-scraper
             sudo install -m 644 infraestructura_aws/servidor/miayudante-monitor /etc/cron.d/miayudante-monitor
+            sudo install -m 644 infraestructura_aws/servidor/miayudante-logrotate /etc/logrotate.d/miayudante
             sudo ln -sf /etc/nginx/sites-available/miayudante /etc/nginx/sites-enabled/miayudante
             sudo rm -f /etc/nginx/sites-enabled/default
             chmod o+x /home/ubuntu
@@ -65,6 +66,8 @@ jobs:
             # Migraciones de base de datos en la carpeta del backend
             cd backend_api
             /home/ubuntu/MiAyudanteAWS/venv/bin/python manage.py migrate --noinput
+            # Tabla de la caché compartida (límites de intentos entre los workers de Gunicorn); no hace nada si ya existe
+            /home/ubuntu/MiAyudanteAWS/venv/bin/python manage.py createcachetable
             /home/ubuntu/MiAyudanteAWS/venv/bin/python manage.py collectstatic --noinput
 
             # Las tareas automáticas de Ubuntu pueden tener apt bloqueado por unos minutos
