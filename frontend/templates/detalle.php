@@ -136,14 +136,23 @@ $es_favorito = in_array($oferta_id, $_SESSION['favoritos']);
                     </p>
 
                     <div class="carrera-cta-row">
-                        <a href="#malla-curricular" class="btn-navy-primary">
-                            Ver Malla Curricular
-                        </a>
+                        <?php if (!empty($detalle['malla_pdf'])): ?>
+                            <a href="<?= htmlspecialchars($detalle['malla_pdf']) ?>"
+                               target="_blank"
+                               rel="noopener noreferrer"
+                               class="btn-navy-primary">
+                                Ver Malla Curricular
+                            </a>
+                        <?php else: ?>
+                            <span class="btn-navy-primary btn-disabled" title="Malla PDF no publicada por la institución">
+                                Malla Curricular no publicada
+                            </span>
+                        <?php endif; ?>
                     </div>
 
                     <hr class="detalle-separador">
 
-                    <!-- SUB-COLUMNAS INFERIORES: OBJETIVOS Y CAMPO LABORAL -->
+                    <!-- SECCIÓN INFERIOR: OBJETIVOS DE LA CARRERA -->
                     <div class="detalle-subcolumns">
                         <div class="subcol-bloque">
                             <div class="subcol-header">
@@ -154,19 +163,6 @@ $es_favorito = in_array($oferta_id, $_SESSION['favoritos']);
                             <ul class="detalle-bullet-list">
                                 <?php foreach ($detalle['objetivos'] as $objetivo): ?>
                                     <li><?= htmlspecialchars($objetivo) ?></li>
-                                <?php endforeach; ?>
-                            </ul>
-                        </div>
-
-                        <div class="subcol-bloque">
-                            <div class="subcol-header">
-                                <span class="subcol-icon" aria-hidden="true">💼</span>
-                                <h2>Campo Laboral</h2>
-                                <span class="pill-navy-tag"><?= htmlspecialchars($detalle['campo_badge']) ?></span>
-                            </div>
-                            <ul class="detalle-bullet-list">
-                                <?php foreach ($detalle['campo_laboral'] as $campo): ?>
-                                    <li><?= htmlspecialchars($campo) ?></li>
                                 <?php endforeach; ?>
                             </ul>
                         </div>
@@ -221,10 +217,6 @@ $es_favorito = in_array($oferta_id, $_SESSION['favoritos']);
                                    target="_blank"
                                    rel="noopener noreferrer"
                                    class="btn-navy-block">
-                                    Descargar Malla
-                                </a>
-                            <?php else: ?>
-                                <a href="#malla-curricular" class="btn-navy-block">
                                     Descargar Malla
                                 </a>
                             <?php endif; ?>
