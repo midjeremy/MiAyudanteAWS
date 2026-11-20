@@ -116,17 +116,25 @@ function normalizar_lista_detalle($valor, array $fallback): array {
 function oferta_a_detalle(array $row): array {
     $base = oferta_a_tarjeta($row);
     $semestres = (int) ($row['duracion_semestres'] ?? 0);
-    $anios = $semestres ? round($semestres / 2, 1) : 0;
+    $duracion_base = duracion_de_oferta($row); // Usa duracion_meses o duracion_semestres
+    $duracion_publicada = trim((string) ($row['duracion_texto'] ?? ''));
 
-    // Formato para duracion de la carrera
-    $duracion_texto = 'No informada';
-    if ($anios > 0 && $semestres > 0) {
-        $duracion_texto = $anios . ($anios == 1 ? ' Año' : ' Años') . ' (' . $semestres . ' Semestres)';
-    } elseif ($semestres > 0) {
-        $duracion_texto = $semestres . ' Semestres';
+    // Formato para duración: ej. "4 años (8 Semestres)" o "2,7 años (8 bimestres)"
+    if ($duracion_base !== 'No informada') {
+        if ($semestres > 0) {
+            $duracion_texto = $duracion_base . ' (' . $semestres . ' Semestres)';
+        } elseif ($duracion_publicada !== '' && strcasecmp($duracion_publicada, $duracion_base) !== 0) {
+            $duracion_texto = $duracion_base . ' (' . $duracion_publicada . ')';
+        } else {
+            $duracion_texto = $duracion_base;
+        }
+    } elseif ($duracion_publicada !== '') {
+        $duracion_texto = $duracion_publicada;
+    } else {
+        $duracion_texto = 'No informada';
     }
 
-    // Formato para Sede y Region
+    // Formato para Sede y Región
     $sede = trim($row['sede'] ?? '');
     $region = trim($row['region'] ?? '');
     if ($sede !== '' && $region !== '' && stripos($sede, $region) === false) {
@@ -142,16 +150,24 @@ function oferta_a_detalle(array $row): array {
     $jornada = trim($row['jornada'] ?? ($row['tipo_jornada'] ?? ''));
     $modalidad_texto = ($jornada !== '') ? $modalidad . ' (' . $jornada . ')' : $modalidad;
 
-    // Matrícula anual
-    $matricula = $row['matricula_clp'] ?? ($row['matricula'] ?? null);
-    $matricula_texto = ($matricula !== null && $matricula !== '')
-        ? formatear_clp($matricula)
-        : 'No informada';
+    // Matrícula anual (la API usa 'valor_matricula' y 'matricula_periodo')
+    $valor_matricula = $row['valor_matricula'] ?? ($row['matricula_clp'] ?? ($row['matricula'] ?? null));
+    if ($valor_matricula !== null && $valor_matricula !== '' && (float) $valor_matricula > 0) {
+        $periodo_mat = trim((string) ($row['matricula_periodo'] ?? ''));
+        $matricula_texto = formatear_clp($valor_matricula) . ($periodo_mat !== '' ? ' (' . $periodo_mat . ')' : '');
+    } elseif ($valor_matricula !== null && $valor_matricula !== '' && (float) $valor_matricula === 0.0) {
+        $matricula_texto = '$0 (Sin costo)';
+    } else {
+        $matricula_texto = 'No informada';
+    }
 
-    // Descripción principal
+    // Descripción principal (evita escribir "No informada" dentro de la oración)
     $descripcion = trim($row['descripcion'] ?? '');
     if ($descripcion === '') {
-        $descripcion = "{$base['nombre']} es un programa de educación superior impartido por {$base['institucion']} con una duración formal de {$duracion_texto}, orientado a desarrollar competencias prácticas y tecnológicas alineadas con las demandas actuales del sector productivo.";
+        $fragmento_duracion = ($duracion_texto !== 'No informada')
+            ? " con una duración formal de {$duracion_texto},"
+            : ',';
+        $descripcion = "{$base['nombre']} es un programa de educación superior impartido por {$base['institucion']}{$fragmento_duracion} orientado a desarrollar competencias prácticas y tecnológicas alineadas con las demandas actuales del sector productivo.";
     }
 
     $objetivos = normalizar_lista_detalle(
@@ -163,17 +179,15 @@ function oferta_a_detalle(array $row): array {
         ]
     );
 
-
     return array_merge($base, [
         'carrera_id'      => (int) ($row['carrera_id'] ?? 0),
         'descripcion'     => $descripcion,
         'objetivos'       => $objetivos,
-        'objetivos_badge' => $row['nivel_formacion'] ?? 'Perfil',
+        'objetivos_badge' => $row['nivel'] ?? ($row['nivel_formacion'] ?? 'Perfil'),
         'matricula'       => $matricula_texto,
         'duracion_texto'  => $duracion_texto,
         'campus_texto'    => $campus_texto,
         'modalidad_texto' => $modalidad_texto,
-        'malla_pdf'       => $row['s3_url_malla_pdf'] ?? ($row['malla_pdf'] ?? ''),
-        'malla'           => is_array($row['malla'] ?? null) ? $row['malla'] : [],
+        'malla_pdf'       => $row['malla_url'] ?? ($row['s3_url_malla_pdf'] ?? ($row['malla_pdf'] ?? '')),
     ]);
 }

@@ -1,4 +1,4 @@
-/*ESTILOS DE VISTA DETALLE DE CARRERA*/
+/*ESTILOS DE VISTA DETALLE DE CARRERA (detalle.php) */
 
 .detalle-page {
     max-width: 1220px;
@@ -58,8 +58,7 @@
 
 /* Estilo base compartido para todas las tarjetas blancas */
 .detalle-card-principal,
-.sidebar-box,
-.detalle-malla-wrapper {
+.sidebar-box {
     background-color: #ffffff;
     border: 1px solid #e2e8f0;
     border-radius: 16px;
@@ -122,7 +121,7 @@
     height: 36px;
     border-radius: 50%;
     background-color: #e0e7ff;
-    color: #6a0dad;
+    color: #16215c;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -166,7 +165,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    background-color: #6a0dad;
+    background-color: #16215c;
     color: #ffffff;
     font-size: 14px;
     font-weight: 600;
@@ -177,8 +176,15 @@
 }
 
 .btn-navy-primary:hover {
-    background-color: #6a0dad;
+    background-color: #1e3a8a;
     transform: translateY(-1px);
+}
+
+.btn-navy-primary.btn-disabled {
+    background-color: #94a3b8;
+    color: #f8fafc;
+    cursor: not-allowed;
+    pointer-events: none;
 }
 
 /* Línea divisoria horizontal */
@@ -188,11 +194,11 @@
     margin: 0 0 24px 0;
 }
 
-/*SUB-COLUMNAS INFERIORES: OBJETIVOS Y CAMPO LABORAL*/
+/*SECCIÓN INFERIOR: OBJETIVOS DE LA CARRERA (ANCHO COMPLETO)*/
 .detalle-subcolumns {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 28px;
+    grid-template-columns: 1fr;
+    gap: 20px;
 }
 
 .subcol-header {
@@ -221,7 +227,7 @@
     margin: 0;
 }
 
-/* Etiqueta píldora azul marino */
+/*Etiqueta píldora azul marino*/
 .pill-navy-tag {
     background-color: #16215c;
     color: #ffffff;
@@ -242,7 +248,7 @@
 
 .detalle-bullet-list li {
     font-size: 14px;
-    line-height: 1.5;
+    line-height: 1.55;
     color: #334155;
 }
 
@@ -264,6 +270,7 @@
 .sidebar-institucion-box p {
     margin: 0;
     font-size: 15px;
+    line-height: 1.35;
     color: #334155;
 }
 
@@ -272,7 +279,7 @@
     font-weight: 700;
 }
 
-/* Tarjeta inferior: Detalles Clave */
+/*Tarjeta inferior: Detalles Clave*/
 .sidebar-claves-box {
     padding: 22px 24px;
 }
@@ -312,10 +319,11 @@
     margin: 0;
     color: #0f172a;
     font-weight: 600;
+    line-height: 1.4;
     text-align: right;
 }
 
-/* Botones apilados de acción en el sidebar */
+/*Botones apilados de acción en el sidebar*/
 .sidebar-botones-stack {
     display: flex;
     flex-direction: column;
@@ -343,7 +351,7 @@
     transform: translateY(-1px);
 }
 
-/* RESPONSIVE (TABLET Y MÓVIL)*/
+/*RESPONSIVE (TABLET Y MÓVIL)*/
 @media (max-width: 960px) {
     .detalle-layout-grid {
         grid-template-columns: 1fr;
@@ -355,17 +363,11 @@
 }
 
 @media (max-width: 640px) {
-    .detalle-card-principal,
-    .detalle-malla-wrapper {
+    .detalle-card-principal {
         padding: 20px 18px;
     }
 
     .carrera-titulo-principal {
         font-size: 24px;
-    }
-
-    .detalle-subcolumns {
-        grid-template-columns: 1fr;
-        gap: 20px;
     }
 }
