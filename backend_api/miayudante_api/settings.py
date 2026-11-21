@@ -14,6 +14,9 @@ import os
 from datetime import timedelta
 from pathlib import Path
 from dotenv import load_dotenv
+
+from miayudante_api.credenciales_aws import configurar_credenciales_aws
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -231,10 +234,12 @@ CACHES = {
 AWS_STORAGE_BUCKET_NAME = os.getenv('AWS_STORAGE_BUCKET_NAME')
 AWS_S3_REGION_NAME = os.getenv('AWS_S3_REGION_NAME')
 
-# ¡ATENCIÓN!: Estas variables son OBLIGATORIAS para AWS Learner Lab. 
-AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID')
-AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
-AWS_SESSION_TOKEN = os.getenv('AWS_SESSION_TOKEN')
+# Credenciales de AWS: en la EC2 (AWS_USAR_ROL_INSTANCIA=True) se usa el rol de la instancia y se ignoran las
+# claves estáticas del .env, que en el Learner Lab caducan a las pocas horas. Ver credenciales_aws.py.
+_CREDENCIALES_AWS = configurar_credenciales_aws()
+AWS_ACCESS_KEY_ID = _CREDENCIALES_AWS['AWS_ACCESS_KEY_ID']
+AWS_SECRET_ACCESS_KEY = _CREDENCIALES_AWS['AWS_SECRET_ACCESS_KEY']
+AWS_SESSION_TOKEN = _CREDENCIALES_AWS['AWS_SESSION_TOKEN']
 
 # Configuraciones adicionales recomendadas para S3
 AWS_S3_FILE_OVERWRITE = False
