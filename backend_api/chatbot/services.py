@@ -55,7 +55,7 @@ HERRAMIENTAS = [{
         "name": "buscar_carreras",
         "description": (
             "Busca en el catálogo de Mi Ayudante y devuelve las carreras agrupadas por institución, con duración, "
-            "título, sedes, jornadas, aranceles y matrícula. Todos los filtros son opcionales, pero se debe usar al menos uno."
+            "título, menciones, sedes, jornadas, aranceles y matrícula. Todos los filtros son opcionales, pero se debe usar al menos uno."
         ),
         "parameters": {
             "type": "object",
@@ -139,6 +139,8 @@ def resumir_carrera(grupo):
         resumen["duracion"] = f"{grupo['duracion']} semestres"
     if grupo["titulo"]:
         resumen["titulo"] = grupo["titulo"]
+    if grupo["menciones"]:
+        resumen["menciones"] = grupo["menciones"]
 
     sedes = sorted(grupo["sedes"])
     resumen["sedes"] = sedes[:MAX_SEDES]
@@ -162,7 +164,9 @@ def buscar_carreras(terminos=None, instituciones=None, sede="", jornada=""):
     if not (terminos or nombres_instituciones or sede or jornada):
         return {"error": "Indica al menos un criterio: términos de la carrera, institución, sede o jornada."}
 
-    ofertas = OfertaAcademica.objects.select_related("institucion", "carrera", "sede", "jornada")
+    ofertas = OfertaAcademica.objects.select_related("institucion", "carrera", "sede", "jornada").prefetch_related(
+        "carrera__menciones"
+    )
     if terminos:
         ofertas = ofertas.filter(
             reduce(or_, (Q(carrera__nombre_carrera__iregex=patron_flexible(t)) for t in terminos))
@@ -188,6 +192,7 @@ def buscar_carreras(terminos=None, instituciones=None, sede="", jornada=""):
             "carrera": oferta.carrera.nombre_carrera,
             "duracion": oferta.carrera.duracion_semestres,
             "titulo": oferta.carrera.titulo_otorgado,
+            "menciones": [mencion.nombre for mencion in oferta.carrera.menciones.all()],
             "sedes": set(),
             "jornadas": set(),
             "costos": {nombre: [] for nombre, _ in CAMPOS_COSTO},

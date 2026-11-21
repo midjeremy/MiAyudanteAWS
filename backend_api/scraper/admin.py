@@ -1,5 +1,5 @@
 from django.contrib import admin
-from scraper.models import Institucion, LoteScrapingS3, Carrera, Sede, Jornada, OfertaAcademica
+from scraper.models import Institucion, LoteScrapingS3, Carrera, Mencion, Sede, Jornada, OfertaAcademica
 
 admin.site.site_header = 'Mi Ayudante · Administración'
 admin.site.site_title = 'Mi Ayudante'
@@ -19,8 +19,15 @@ class InstitucionAdmin(admin.ModelAdmin):
     search_fields = ('nombre', 'codigo')
 
 
+class MencionInline(admin.TabularInline):
+    model = Mencion
+    extra = 0
+    fields = ('nombre', 'competencias')
+
+
 @admin.register(Carrera)
 class CarreraAdmin(admin.ModelAdmin):
+    inlines = [MencionInline]
     list_display = ('nombre_carrera', 'institucion', 'area_estudio', 'area_institucion', 'nivel_formacion',
                     'duracion_semestres', 'duracion_texto')
     search_fields = ('nombre_carrera', 'titulo_otorgado', 'area_institucion')
