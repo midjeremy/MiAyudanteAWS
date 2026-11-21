@@ -5,7 +5,7 @@ import re
 
 from django.db import migrations, models
 
-_PATRON_MENCION = re.compile(r'\s+menci[oó]n\s+', re.IGNORECASE)
+_PATRON_MENCION = re.compile(r'\smenci[oó]n\s', re.IGNORECASE)
 
 
 def completar_nombre_base(apps, schema_editor):
@@ -13,8 +13,8 @@ def completar_nombre_base(apps, schema_editor):
 
     Misma regla que scraper.duoc.spider.nombre_sin_mencion (copiada: una migración no debe importar código que cambia).
     """
-    Carrera = apps.get_model('scraper', 'Carrera')
-    for carrera in Carrera.objects.filter(nombre_base='').only('id', 'nombre_carrera'):
+    modelo_carrera = apps.get_model('scraper', 'Carrera')
+    for carrera in modelo_carrera.objects.filter(nombre_base='').only('id', 'nombre_carrera'):
         nombre = ' '.join(carrera.nombre_carrera.split())
         carrera.nombre_base = _PATRON_MENCION.split(nombre, maxsplit=1)[0].strip()[:200]
         carrera.save(update_fields=['nombre_base'])

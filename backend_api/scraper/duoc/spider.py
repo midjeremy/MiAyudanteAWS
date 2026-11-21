@@ -22,7 +22,7 @@ def ruta_carrera(url):
     return urlsplit(url or '').path.rstrip('/').lower()
 
 
-_PATRON_MENCION_EN_NOMBRE = re.compile(r'\s+menci[oó]n\s+', re.IGNORECASE)
+_PATRON_MENCION_EN_NOMBRE = re.compile(r'\smenci[oó]n\s', re.IGNORECASE)
 
 
 def limpiar_mencion(texto):
