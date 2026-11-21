@@ -1,8 +1,10 @@
 name: Validar Infraestructura (Terraform)
 on:
+  # Corre en cada PR hacia main, aunque no toque infraestructura_aws/: el check es obligatorio en la
+  # protección de main y, con un filtro de rutas, un PR sin cambios de Terraform quedaba esperando un check
+  # que nunca llegaba ("Expected — Waiting for status") y no se podía fusionar. La validación dura ~15 s.
   pull_request:
-    paths:
-      - 'infraestructura_aws/**'
+    branches: [ "main" ]
   push:
     branches: [ "main" ]
     paths:
