@@ -58,6 +58,14 @@ jobs:
               printf '%s=%s\n' "$1" "$2" >> .env.tmp
               chmod 600 .env.tmp && mv .env.tmp .env
             }
+            quitar_env() {
+              grep -v "^$1=" .env > .env.tmp || true
+              chmod 600 .env.tmp && mv .env.tmp .env
+            }
+            # S3 con el rol de la instancia (LabInstanceProfile): las claves copiadas de una sesión del Learner Lab
+            # caducan a las pocas horas y, si están en el .env, boto3 las prefiere al rol y el ETL deja de subir a S3
+            fijar_env AWS_USAR_ROL_INSTANCIA True
+            for CLAVE in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN; do quitar_env "$CLAVE"; done
             # Correo saliente: solo si los dos secretos existen en GitHub (si no, el .env queda como está)
             if [ -n "${SMTP_USUARIO:-}" ] && [ -n "${SMTP_CLAVE:-}" ]; then
               fijar_env SMTP_HOST "${SMTP_HOST:-smtp.gmail.com}"
@@ -92,6 +100,13 @@ jobs:
             /home/ubuntu/MiAyudanteAWS/venv/bin/python manage.py migrate --noinput
             # Tabla de la caché compartida (límites de intentos entre los workers de Gunicorn); no hace nada si ya existe
             /home/ubuntu/MiAyudanteAWS/venv/bin/python manage.py createcachetable
+            # Comprueba que el rol de la instancia llega al bucket (solo avisa: un fallo de S3 no detiene el sitio)
+            /home/ubuntu/MiAyudanteAWS/venv/bin/python manage.py shell -c "
+            from django.conf import settings
+            from scraper.etl import crear_cliente_s3
+            crear_cliente_s3().head_bucket(Bucket=settings.AWS_STORAGE_BUCKET_NAME)
+            print('S3: acceso al bucket con el rol de la instancia OK')
+            " || echo "AVISO: no se pudo acceder al bucket S3 con el rol de la instancia (revisa LabInstanceProfile)"
             /home/ubuntu/MiAyudanteAWS/venv/bin/python manage.py collectstatic --noinput
 
             # Las tareas automáticas de Ubuntu pueden tener apt bloqueado por unos minutos
