@@ -45,6 +45,9 @@ class Carrera(models.Model):
     area_institucion = models.CharField(max_length=100, blank=True, default='')
     # Área común con el test Ikigai (tecnologia, salud, economia, ...); vacío si no se pudo determinar
     area_estudio = models.CharField(max_length=20, blank=True, default='', db_index=True)
+    # Nombre sin la mención: 'Ingeniería en Administración Mención Finanzas' -> 'Ingeniería en Administración'.
+    # Agrupa las carreras que la institución publica por separado, una por mención, con sus propias sedes y aranceles.
+    nombre_base = models.CharField(max_length=200, blank=True, default='', db_index=True)
 
     class Meta:
         verbose_name = 'carrera'
@@ -52,6 +55,28 @@ class Carrera(models.Model):
 
     def __str__(self):
         return self.nombre_carrera
+
+
+class Mencion(models.Model):
+    """Mención o especialización de una carrera, tal como la publica la institución.
+
+    Una carrera puede tener varias (Duoc UC: Gastronomía Internacional ofrece 'Cocina de Alta Gama' y 'Alta
+    Pastelería y Repostería' con las mismas sedes y aranceles). Cuando cada mención tiene su propia página, sedes y
+    aranceles, la institución la publica como otra carrera: se guarda como carrera aparte, con su mención, y
+    Carrera.nombre_base las agrupa.
+    """
+    carrera = models.ForeignKey(Carrera, on_delete=models.CASCADE, related_name='menciones')
+    nombre = models.CharField(max_length=150)
+    competencias = models.TextField(blank=True, default='', help_text='Competencias de la mención, una por línea')
+
+    class Meta:
+        verbose_name = 'mención'
+        verbose_name_plural = 'menciones'
+        ordering = ['carrera_id', 'nombre']
+        constraints = [models.UniqueConstraint(fields=['carrera', 'nombre'], name='mencion_unica_por_carrera')]
+
+    def __str__(self):
+        return f'{self.carrera} - Mención {self.nombre}'
 
 class Sede(models.Model):
     institucion = models.ForeignKey(Institucion, on_delete=models.CASCADE, null=True, blank=True)

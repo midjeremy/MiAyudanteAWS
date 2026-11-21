@@ -22,6 +22,51 @@ def ruta_carrera(url):
     return urlsplit(url or '').path.rstrip('/').lower()
 
 
+_PATRON_MENCION_EN_NOMBRE = re.compile(r'\s+menci[oó]n\s+', re.IGNORECASE)
+
+
+def limpiar_mencion(texto):
+    """'Competencias de la Mención: "Mención Finanzas"' -> 'Finanzas'; 'Mención Administración Hotelera' -> 'Administración Hotelera'."""
+    limpio = ' '.join((texto or '').split())
+    limpio = re.sub(r'^competencias de la menci[oó]n\s*:\s*', '', limpio, flags=re.IGNORECASE)
+    limpio = limpio.strip(' "\'\u201c\u201d')
+    limpio = re.sub(r'^menci[oó]n\s+', '', limpio, flags=re.IGNORECASE)
+    return limpio.strip()
+
+
+def nombre_sin_mencion(nombre):
+    """'Ingeniería en Administración Mención Finanzas' -> 'Ingeniería en Administración' (sin mención, igual)."""
+    return _PATRON_MENCION_EN_NOMBRE.split(' '.join((nombre or '').split()), maxsplit=1)[0].strip()
+
+
+def mencion_del_nombre(nombre):
+    """La mención que viene en el nombre de la carrera, o '' si no tiene."""
+    partes = _PATRON_MENCION_EN_NOMBRE.split(' '.join((nombre or '').split()), maxsplit=1)
+    return partes[1].strip() if len(partes) == 2 else ''
+
+
+def extraer_menciones(response, nombre=''):
+    """Menciones de la página de una carrera, con sus competencias.
+
+    Duoc UC las publica en el acordeón de competencias: una tarjeta por mención ('Competencias de la Mención:
+    "Cocina de Alta Gama"' o 'Mención Administración Hotelera'), aparte de 'Competencias de la Carrera'.
+    Si la página no trae esa tarjeta pero el nombre sí trae la mención, se usa la del nombre.
+    """
+    menciones = {}
+    for cabecera in response.xpath('//div[contains(@class, "card-header")][.//h4[contains(., "Mención")]]'):
+        titulo = limpiar_mencion(' '.join(cabecera.xpath('.//h4//text()').getall()))
+        if not titulo or titulo.lower().startswith('competencias de la carrera'):
+            continue
+        competencias = [
+            ' '.join(' '.join(li.xpath('.//text()').getall()).split())
+            for li in cabecera.xpath('following-sibling::div[1]//li')
+        ]
+        menciones.setdefault(titulo, [c for c in competencias if c])
+    if not menciones and mencion_del_nombre(nombre):
+        menciones[mencion_del_nombre(nombre)] = []
+    return [{'nombre': titulo, 'competencias': competencias} for titulo, competencias in menciones.items()]
+
+
 def normalizar_nombre_sede(texto):
     return re.sub(r'^(sede|campus)\s+', '', (texto or '').strip(), flags=re.IGNORECASE).strip()
 
@@ -79,6 +124,7 @@ class DuocSpider(SitemapSpider):
             'duraciones': [texto for texto in duraciones if texto],
             'url_malla': url_malla,
             'ofertas': ofertas,
+            'menciones': extraer_menciones(response, nombre),
         }
         if not url_malla:
             yield item

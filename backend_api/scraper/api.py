@@ -29,7 +29,9 @@ class PaginacionCatalogo(PageNumberPagination):
 class OfertasBaseView:
     permission_classes = [AllowAny]
     serializer_class = OfertaSerializer
-    queryset = OfertaAcademica.objects.select_related('institucion', 'carrera', 'sede', 'jornada').order_by(
+    queryset = OfertaAcademica.objects.select_related('institucion', 'carrera', 'sede', 'jornada').prefetch_related(
+        'carrera__menciones'
+    ).order_by(
         'institucion__codigo', 'carrera__nombre_carrera', 'sede__nombre_sede', 'jornada__tipo_jornada', 'id'
     )
 
