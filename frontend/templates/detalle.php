@@ -7,6 +7,9 @@ if (!isset($_SESSION['favoritos'])) {
     $_SESSION['favoritos'] = [];
 }
 
+if (!isset($_SESSION['comparar']) || !is_array($_SESSION['comparar'])) {
+    $_SESSION['comparar'] = [];
+}
 $oferta_id = max(0, intval($_GET['id'] ?? 0));
 if ($oferta_id === 0) {
     header('Location: carreras.php');
@@ -37,6 +40,8 @@ if ($respuesta === null || empty($respuesta['id'])) {
 }
 
 $es_favorito = in_array($oferta_id, $_SESSION['favoritos']);
+$en_comparador = in_array($oferta_id, $_SESSION['comparar']);
+$total_comparando = count($_SESSION['comparar']);
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -208,15 +213,21 @@ $es_favorito = in_array($oferta_id, $_SESSION['favoritos']);
                         </dl>
 
                         <div class="sidebar-botones-stack">
-                            <a href="comparar.php?ids[]=<?= $detalle['id'] ?>" class="btn-navy-block">
-                                Comparar Carrera
-                            </a>
+                            <?php if ($en_comparador): ?>
+                                <a href="comparar.php" class="btn-navy-block">
+                                    ✓ En el comparador (<?= $total_comparando ?>/2)
+                                </a>
+                            <?php else: ?>
+                                <a href="comparar.php?agregar=<?= $detalle['id'] ?>" class="btn-navy-block">
+                                    + Comparar Carrera
+                                </a>
+                            <?php endif; ?>
 
                             <?php if (!empty($detalle['malla_pdf'])): ?>
                                 <a href="<?= htmlspecialchars($detalle['malla_pdf']) ?>"
-                                   target="_blank"
-                                   rel="noopener noreferrer"
-                                   class="btn-navy-block">
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                class="btn-navy-block">
                                     Descargar Malla
                                 </a>
                             <?php endif; ?>

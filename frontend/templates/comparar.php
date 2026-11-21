@@ -4,20 +4,30 @@ session_start();
 require_once 'api.php';
 require_once 'catalogo.php';
 
-if (!isset($_SESSION['comparar'])) {
+if (!isset($_SESSION['comparar']) || !is_array($_SESSION['comparar'])) {
     $_SESSION['comparar'] = [];
+}
+$_SESSION['comparar'] = array_values(array_unique(array_filter(array_map('intval', $_SESSION['comparar']), fn($id) => $id > 0)));
+
+// AGREGAR UNA CARRERA DESDE DETALLE SIN ELIMINAR LA SELECCIONADA PREVIAMENTE
+if (isset($_GET['agregar'])) {
+    $id_agregar = intval($_GET['agregar']);
+    if ($id_agregar > 0 && !in_array($id_agregar, $_SESSION['comparar'], true)) {
+        if (count($_SESSION['comparar']) >= 2) {
+            // Si ya había 2, conserva la última elegida y reemplaza la más antigua
+            array_shift($_SESSION['comparar']);
+        }
+        $_SESSION['comparar'][] = $id_agregar;
+    }
+    header("Location: comparar.php");
+    exit;
 }
 
 // LÓGICA PARA ELIMINAR UNA CARRERA AL PRESIONAR LA "✖"
 if (isset($_GET['remover'])) {
     $id_a_remover = intval($_GET['remover']);
     $_SESSION['comparar'] = array_values(array_diff($_SESSION['comparar'], [$id_a_remover]));
-    
-    if (!empty($_SESSION['comparar'])) {
-        header("Location: comparar.php?ids=" . implode(',', $_SESSION['comparar']));
-    } else {
-        header("Location: comparar.php");
-    }
+    header("Location: comparar.php");
     exit;
 }
 
@@ -28,15 +38,19 @@ if (isset($_GET['clear_comp'])) {
     exit;
 }
 
-// LEER LOS IDs: SOPORTA TANTO LA URL (GET) COMO LA SESIÓN
-$ids_seleccionados = [];
+// LEER LOS IDs DESDE URL (GET) O SESIÓN SIN PISAR UNA SELECCIÓN PREVIA DE 1 CARRERA
 if (isset($_GET['ids']) && !empty($_GET['ids'])) {
-    $ids_seleccionados = array_slice(array_map('intval', (array) $_GET['ids']), 0, 2);
-    $_SESSION['comparar'] = $ids_seleccionados; 
-} elseif (!empty($_SESSION['comparar'])) {
-    $ids_seleccionados = array_slice(array_map('intval', $_SESSION['comparar']), 0, 2);
+    $raw_ids = is_string($_GET['ids']) ? explode(',', $_GET['ids']) : (array) $_GET['ids'];
+    $ids_url = array_values(array_unique(array_filter(array_map('intval', $raw_ids), fn($id) => $id > 0)));
+
+    if (count($ids_url) === 1 && count($_SESSION['comparar']) === 1 && $_SESSION['comparar'][0] !== $ids_url[0]) {
+        $_SESSION['comparar'][] = $ids_url[0];
+    } elseif (!empty($ids_url)) {
+        $_SESSION['comparar'] = array_slice($ids_url, 0, 2);
+    }
 }
 
+$ids_seleccionados = array_slice($_SESSION['comparar'], 0, 2);
 // PEDIR A DJANGO LAS OFERTAS SELECCIONADAS
 $carreras_por_id = [];
 if (!empty($ids_seleccionados)) {
@@ -113,10 +127,10 @@ $carrera2 = $carreras_seleccionadas[1] ?? null;
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Comparar Carreras - Mi Ayudante</title>
-    <link rel="stylesheet" href="/static/css/comparar.css">
-    <link rel="stylesheet" href="/static/css/responsive.css">
-    <link rel="stylesheet" href="/static/css/chat.css">
-    <script src="/static/js/chat.js" defer></script>
+    <link rel="stylesheet" href="../static/css/comparar.css">
+    <link rel="stylesheet" href="../static/css/responsive.css">
+    <link rel="stylesheet" href="../static/css/chat.css">
+    <script src="../static/js/chat.js" defer></script>
 </head>
 <body class="app-body">
 
