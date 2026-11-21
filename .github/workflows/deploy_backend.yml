@@ -28,11 +28,16 @@ jobs:
         uses: appleboy/ssh-action@v1.2.0
         env:
           DOMINIO: ${{ vars.DOMINIO }}
+          # Correo saliente (SMTP). Settings > Secrets and variables > Actions > Secrets: SMTP_USUARIO y SMTP_CLAVE
+          # (contraseña de aplicación de Gmail). SMTP_HOST es opcional (Variables); por defecto smtp.gmail.com.
+          SMTP_USUARIO: ${{ secrets.SMTP_USUARIO }}
+          SMTP_CLAVE: ${{ secrets.SMTP_CLAVE }}
+          SMTP_HOST: ${{ vars.SMTP_HOST }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
-          envs: DOMINIO
+          envs: DOMINIO,SMTP_USUARIO,SMTP_CLAVE,SMTP_HOST
           script: |
             set -e
 
@@ -45,6 +50,25 @@ jobs:
             git fetch origin main
             git checkout -f -B main origin/main
 
+            # .env de la raíz (secretos fuera del repositorio): solo lo lee el usuario ubuntu
+            touch .env && chmod 600 .env
+            # Reemplaza o agrega CLAVE=valor en el .env sin pasar el valor por sed (puede traer caracteres especiales)
+            fijar_env() {
+              grep -v "^$1=" .env > .env.tmp || true
+              printf '%s=%s\n' "$1" "$2" >> .env.tmp
+              chmod 600 .env.tmp && mv .env.tmp .env
+            }
+            # Correo saliente: solo si los dos secretos existen en GitHub (si no, el .env queda como está)
+            if [ -n "${SMTP_USUARIO:-}" ] && [ -n "${SMTP_CLAVE:-}" ]; then
+              fijar_env SMTP_HOST "${SMTP_HOST:-smtp.gmail.com}"
+              fijar_env SMTP_PORT 587
+              fijar_env SMTP_USUARIO "$SMTP_USUARIO"
+              fijar_env SMTP_CLAVE "$(printf '%s' "$SMTP_CLAVE" | tr -d ' ')"
+              echo "Correo SMTP configurado en el .env"
+            else
+              echo "Sin secretos SMTP_USUARIO y SMTP_CLAVE: el correo saliente queda como esté en el .env"
+            fi
+
             # Instalar dependencias en el venv usando el requirements.txt de la raíz
             [ -d venv ] || python3 -m venv venv
             venv/bin/pip install -r requirements.txt
@@ -56,6 +80,7 @@ jobs:
             sudo cp infraestructura_aws/servidor/nginx-miayudante.conf /etc/nginx/sites-available/miayudante
             sudo install -m 644 infraestructura_aws/servidor/miayudante-scraper /etc/cron.d/miayudante-scraper
             sudo install -m 644 infraestructura_aws/servidor/miayudante-monitor /etc/cron.d/miayudante-monitor
+            sudo install -m 644 infraestructura_aws/servidor/miayudante-logrotate /etc/logrotate.d/miayudante
             sudo ln -sf /etc/nginx/sites-available/miayudante /etc/nginx/sites-enabled/miayudante
             sudo rm -f /etc/nginx/sites-enabled/default
             chmod o+x /home/ubuntu
@@ -65,6 +90,8 @@ jobs:
             # Migraciones de base de datos en la carpeta del backend
             cd backend_api
             /home/ubuntu/MiAyudanteAWS/venv/bin/python manage.py migrate --noinput
+            # Tabla de la caché compartida (límites de intentos entre los workers de Gunicorn); no hace nada si ya existe
+            /home/ubuntu/MiAyudanteAWS/venv/bin/python manage.py createcachetable
             /home/ubuntu/MiAyudanteAWS/venv/bin/python manage.py collectstatic --noinput
 
             # Las tareas automáticas de Ubuntu pueden tener apt bloqueado por unos minutos

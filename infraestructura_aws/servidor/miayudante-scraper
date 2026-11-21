@@ -1,6 +1,10 @@
-# Scrapers: domingos a las 03:00 UTC (INACAP) y 05:00 UTC (Duoc UC)
-0 3 * * 0 ubuntu cd /home/ubuntu/MiAyudanteAWS/backend_api && flock -n /tmp/scraper_inacap.lock /home/ubuntu/MiAyudanteAWS/venv/bin/python manage.py run_inacap_scraper >> /home/ubuntu/scraper_inacap.log 2>&1
-0 5 * * 0 ubuntu cd /home/ubuntu/MiAyudanteAWS/backend_api && flock -n /tmp/scraper_duoc.lock /home/ubuntu/MiAyudanteAWS/venv/bin/python manage.py run_duoc_scraper >> /home/ubuntu/scraper_duoc.log 2>&1
+# Scrapers del catálogo (RF-05). AWS Learner Lab enciende la EC2 solo durante las sesiones, así que un horario fijo
+# (antes: domingo 03:00 y 05:00 UTC) casi nunca coincidía. Ahora cron revisa cada hora y cada scraper corre solo si
+# no hay un lote con carga en los últimos 7 días ni otro intento en las últimas 24 h (--si-desactualizado).
+# Un solo candado para los dos: no corren a la vez en la EC2 y el que encuentre el candado tomado espera a la hora siguiente.
+# Si un lote termina en ERROR o PARCIAL se avisa por correo a alertas@mi-ayudante.cl y el comando sale con código 1.
+17 * * * * ubuntu cd /home/ubuntu/MiAyudanteAWS/backend_api && flock -n /tmp/miayudante_scraper.lock /home/ubuntu/MiAyudanteAWS/venv/bin/python manage.py run_inacap_scraper --si-desactualizado 7 >> /home/ubuntu/scraper_inacap.log 2>&1
+47 * * * * ubuntu cd /home/ubuntu/MiAyudanteAWS/backend_api && flock -n /tmp/miayudante_scraper.lock /home/ubuntu/MiAyudanteAWS/venv/bin/python manage.py run_duoc_scraper --si-desactualizado 7 >> /home/ubuntu/scraper_duoc.log 2>&1
 
 # Ley 21.719 (plazo de conservación): el día 1 de cada mes a las 06:00 UTC se eliminan las cuentas sin acceso en 24 meses
 0 6 1 * * ubuntu cd /home/ubuntu/MiAyudanteAWS/backend_api && /home/ubuntu/MiAyudanteAWS/venv/bin/python manage.py purgar_cuentas_inactivas >> /home/ubuntu/purga_cuentas.log 2>&1

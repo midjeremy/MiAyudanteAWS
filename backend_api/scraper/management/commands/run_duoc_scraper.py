@@ -1,13 +1,13 @@
 from django.conf import settings
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from scrapy import signals
 from scrapy.crawler import CrawlerProcess
 
 from scraper.duoc.carga import CUOTAS_POR_SEMESTRE, MINIMO_CARRERAS, cargar_items, obtener_institucion, validar_items
 from scraper.duoc.spider import DuocSpider
 from scraper.etl import (
-    TASA_MINIMA_EXITO, cerrar_lote, cerrar_lotes_colgados, crear_cliente_s3, describir_error,
-    retirar_ofertas_obsoletas, subir_json_crudo, tasa_exito,
+    TASA_MINIMA_EXITO, avisar_lote, cerrar_lote, cerrar_lotes_colgados, crear_cliente_s3, describir_error,
+    motivo_para_omitir, retirar_ofertas_obsoletas, subir_json_crudo, tasa_exito,
 )
 from scraper.models import LoteScrapingS3
 
@@ -20,6 +20,10 @@ class Command(BaseCommand):
         parser.add_argument(
             '--cuotas-semestre', type=int, default=CUOTAS_POR_SEMESTRE,
             help='Cuotas mensuales del arancel semestral (Duoc publica una cuota; 0 = no calcular semestral ni anual)',
+        )
+        parser.add_argument(
+            '--si-desactualizado', type=int, metavar='DIAS',
+            help='Solo extrae si no hay un lote con carga en estos días ni otro intento en las últimas 24 h (cron cada hora)',
         )
 
     def extraer(self, limite):
@@ -61,10 +65,18 @@ class Command(BaseCommand):
             return None
 
     def handle(self, *args, **kwargs):
+        institucion = obtener_institucion()
+        if kwargs['si_desactualizado'] is not None:
+            motivo = motivo_para_omitir(institucion, kwargs['si_desactualizado'])
+            if motivo:
+                # Cron lo ejecuta cada hora: el aviso solo se muestra con -v 2 para no llenar el log
+                if kwargs['verbosity'] > 1:
+                    self.stdout.write(f'Duoc UC al día, no se extrae: {motivo}.')
+                return
+
         self.stdout.write(self.style.WARNING('Iniciando extracción de Duoc UC con Scrapy...'))
         items = self.extraer(kwargs['limite'])
 
-        institucion = obtener_institucion()
         colgados = cerrar_lotes_colgados(institucion)
         if colgados:
             self.stdout.write(self.style.WARNING(f'[*] {colgados} lote(s) interrumpido(s) marcados como ERROR.'))
@@ -82,16 +94,19 @@ class Command(BaseCommand):
         rastreo_completo = not kwargs['limite']
         if rastreo_completo and (len(validas) < MINIMO_CARRERAS or tasa < TASA_MINIMA_EXITO):
             cerrar_lote(lote, 'ERROR', len(validas), total, errores=errores)
-            self.stdout.write(self.style.ERROR(
-                f'❌ Lote {lote.id} rechazado: posible cambio en el sitio. No se modifican los datos publicados.'
-            ))
-            return
+            avisar_lote(lote)
+            # Código de salida 1: el log de cron y quien lo ejecute a mano ven que falló
+            raise CommandError(
+                f'Lote {lote.id} rechazado ({len(validas)} carreras válidas, {tasa} %): posible cambio en el sitio. '
+                'No se modifican los datos publicados.'
+            )
 
         try:
             ids_vigentes = cargar_items(items, institucion, lote, kwargs['cuotas_semestre'])
         except Exception as e:
             cerrar_lote(lote, 'ERROR', 0, total, errores=[*errores, f'Carga: {describir_error(e, 500)}'])
-            raise
+            avisar_lote(lote)
+            raise CommandError(f'Lote {lote.id}: falló la carga en PostgreSQL ({describir_error(e)}).') from e
 
         retiradas = retirar_ofertas_obsoletas(institucion, ids_vigentes) if rastreo_completo else 0
         cerrar_lote(lote, 'COMPLETADO', len(validas), total, len(ids_vigentes), errores)
