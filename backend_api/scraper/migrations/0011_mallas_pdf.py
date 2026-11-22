@@ -5,16 +5,16 @@ from django.db import migrations, models
 
 def separar_respaldo_html(apps, schema_editor):
     """Duoc UC guardaba el respaldo HTML de la malla en s3_url_malla_pdf: pasa a s3_malla_html."""
-    Carrera = apps.get_model('scraper', 'Carrera')
-    for carrera in Carrera.objects.filter(s3_url_malla_pdf__iendswith='.html'):
+    carrera_modelo = apps.get_model('scraper', 'Carrera')
+    for carrera in carrera_modelo.objects.filter(s3_url_malla_pdf__iendswith='.html'):
         carrera.s3_malla_html = carrera.s3_url_malla_pdf
         carrera.s3_url_malla_pdf = None
         carrera.save(update_fields=['s3_malla_html', 's3_url_malla_pdf'])
 
 
 def unir_respaldo_html(apps, schema_editor):
-    Carrera = apps.get_model('scraper', 'Carrera')
-    for carrera in Carrera.objects.exclude(s3_malla_html='').filter(s3_url_malla_pdf__isnull=True):
+    carrera_modelo = apps.get_model('scraper', 'Carrera')
+    for carrera in carrera_modelo.objects.exclude(s3_malla_html='').filter(s3_url_malla_pdf__isnull=True):
         carrera.s3_url_malla_pdf = carrera.s3_malla_html
         carrera.save(update_fields=['s3_url_malla_pdf'])
 
