@@ -108,6 +108,8 @@ REST_FRAMEWORK = {
         # Códigos del doble factor (6 dígitos): pocos intentos para que no se puedan adivinar
         'auth_2fa': '5/min',
         'chatbot': '10/min',
+        # Descarga de mallas en PDF: cada una genera un enlace prefirmado de S3
+        'mallas': '30/min',
     },
     # Nginx o PHP envían la IP real del visitante en X-Forwarded-For
     'NUM_PROXIES': 1,

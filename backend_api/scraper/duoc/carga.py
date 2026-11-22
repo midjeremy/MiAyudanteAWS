@@ -109,7 +109,7 @@ def cargar_items(items, institucion, lote=None, cuotas_por_semestre=CUOTAS_POR_S
                 'duracion_texto': ' / '.join(d['texto'] for d in duraciones)[:200],
                 'nivel_formacion': clasificar_nivel(item['nombre'], semestres, principal and principal['meses']),
                 'url_malla': item.get('url_malla'),
-                's3_url_malla_pdf': item.get('malla_s3'),
+                's3_malla_html': item.get('malla_s3') or '',
                 'area_institucion': escuela,
                 'area_estudio': clasificar_area(item['nombre'], area_institucional),
                 'nombre_base': nombre_sin_mencion(item['nombre']),

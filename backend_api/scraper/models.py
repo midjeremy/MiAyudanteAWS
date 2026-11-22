@@ -39,7 +39,11 @@ class Carrera(models.Model):
     duracion_semestres = models.IntegerField(blank=True, null=True)  # solo si se publica en semestres
     duracion_texto = models.CharField(max_length=200, blank=True, default='')  # tal como la publica la institución
     titulo_otorgado = models.CharField(max_length=255, blank=True, null=True)
+    # Clave en S3 de la malla en PDF que se ofrece para descargar (INACAP: el PDF publicado; Duoc UC: generado)
     s3_url_malla_pdf = models.TextField(blank=True, null=True)
+    # Respaldo de la malla en HTML (Duoc UC la publica como página web, no como PDF)
+    s3_malla_html = models.TextField(blank=True, default='')
+    # Malla digital en el sitio de la institución
     url_malla = models.URLField(max_length=500, blank=True, null=True)
     # Agrupación tal como la publica la institución (INACAP: área; Duoc UC: escuela)
     area_institucion = models.CharField(max_length=100, blank=True, default='')
@@ -70,6 +74,7 @@ class Mencion(models.Model):
     competencias = models.TextField(blank=True, default='', help_text='Competencias de la mención, una por línea')
     # Malla propia de la mención (Ingeniería en Informática publica una por mención); vacía si la carrera tiene una sola
     url_malla = models.URLField(max_length=500, blank=True, null=True)
+    s3_malla_pdf = models.TextField(blank=True, default='', help_text='Clave en S3 de la malla de la mención en PDF')
 
     class Meta:
         verbose_name = 'mención'

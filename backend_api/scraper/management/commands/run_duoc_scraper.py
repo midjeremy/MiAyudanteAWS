@@ -9,6 +9,7 @@ from scraper.etl import (
     TASA_MINIMA_EXITO, avisar_lote, cerrar_lote, cerrar_lotes_colgados, crear_cliente_s3, describir_error,
     motivo_para_omitir, retirar_ofertas_obsoletas, subir_json_crudo, tasa_exito,
 )
+from scraper.mallas_pdf import generar_mallas_pdf, ruta_chrome
 from scraper.models import LoteScrapingS3
 
 
@@ -25,6 +26,7 @@ class Command(BaseCommand):
             '--si-desactualizado', type=int, metavar='DIAS',
             help='Solo extrae si no hay un lote con carga en estos días ni otro intento en las últimas 24 h (cron cada hora)',
         )
+        parser.add_argument('--sin-pdf', action='store_true', help='No imprime en PDF las mallas nuevas o cambiadas')
 
     def extraer(self, limite):
         items = []
@@ -113,3 +115,18 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(
             f'✅ Lote {lote.id}: {len(validas)} carreras, {len(ids_vigentes)} ofertas, {retiradas} retiradas. KPI-01: {tasa}%.'
         ))
+        if not kwargs['sin_pdf']:
+            self.imprimir_mallas(institucion)
+
+    def imprimir_mallas(self, institucion):
+        """Mallas descargables en PDF (solo las nuevas o cambiadas). Un fallo aquí no afecta al lote ya cargado."""
+        if not ruta_chrome():
+            self.stdout.write(self.style.WARNING('[!] Sin Chrome: no se generan las mallas en PDF.'))
+            return
+        try:
+            subidas, fallidas = generar_mallas_pdf(
+                crear_cliente_s3(), settings.AWS_STORAGE_BUCKET_NAME, institucion, avisar=self.stdout.write,
+            )
+            self.stdout.write(f'Mallas en PDF: {subidas} nuevas, {len(fallidas)} fallidas.')
+        except Exception as e:
+            self.stdout.write(self.style.WARNING(f'[!] No se pudieron generar las mallas en PDF: {e}'))

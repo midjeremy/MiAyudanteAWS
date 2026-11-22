@@ -2,6 +2,7 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from scraper.api_mallas import ruta_malla_pdf, ruta_malla_pdf_mencion
 from scraper.catalogos import AREAS_ESTUDIO
 from scraper.models import OfertaAcademica
 
@@ -16,6 +17,8 @@ class OfertaSerializer(serializers.ModelSerializer):
     titulo = serializers.CharField(source='carrera.titulo_otorgado')
     duracion_semestres = serializers.IntegerField(source='carrera.duracion_semestres')
     malla_url = serializers.CharField(source='carrera.url_malla')
+    malla_pdf_url = serializers.SerializerMethodField()
+    mallas_menciones = serializers.SerializerMethodField()
     area_estudio = serializers.CharField(source='carrera.area_estudio')
     area_estudio_nombre = serializers.SerializerMethodField()
     area_institucion = serializers.CharField(source='carrera.area_institucion')
@@ -39,7 +42,8 @@ class OfertaSerializer(serializers.ModelSerializer):
         model = OfertaAcademica
         fields = [
             'id', 'institucion', 'institucion_codigo', 'carrera_id', 'carrera', 'nivel', 'titulo',
-            'duracion_semestres', 'duracion_texto', 'duracion_meses', 'malla_url', 'area_estudio',
+            'duracion_semestres', 'duracion_texto', 'duracion_meses', 'malla_url', 'malla_pdf_url', 'mallas_menciones',
+            'area_estudio',
             'area_estudio_nombre', 'area_institucion', 'nombre_base', 'menciones', 'sede', 'region', 'direccion',
             'jornada', 'modalidad', 'valor_matricula', 'matricula_periodo', 'valor_mensual', 'valor_semestral',
             'valor_anual', 'aranceles_calculados', 'arancel_referencia', 'arancel_publicado',
@@ -53,6 +57,18 @@ class OfertaSerializer(serializers.ModelSerializer):
     def get_menciones(self, oferta) -> list[str]:
         """Menciones de la carrera ('Finanzas', 'Cocina de Alta Gama'...); vacía si no tiene."""
         return [mencion.nombre for mencion in oferta.carrera.menciones.all()]
+
+    def get_malla_pdf_url(self, oferta) -> str | None:
+        """Ruta de esta API para descargar la malla en PDF; null si no hay PDF."""
+        return ruta_malla_pdf(oferta.carrera)
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_mallas_menciones(self, oferta):
+        """Menciones con malla propia: [{nombre, malla_url, malla_pdf_url}]."""
+        return [
+            {'nombre': m.nombre, 'malla_url': m.url_malla, 'malla_pdf_url': ruta_malla_pdf_mencion(m)}
+            for m in oferta.carrera.menciones.all() if m.url_malla
+        ]
 
     def get_area_estudio_nombre(self, oferta) -> str:
         """Nombre del área común con el test Ikigai, por ejemplo 'Tecnología'."""

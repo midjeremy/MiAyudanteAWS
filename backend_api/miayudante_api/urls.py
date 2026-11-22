@@ -18,7 +18,7 @@ from django.contrib import admin
 from django.urls import path, include
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
-from scraper import api, api_carreras, salud, views
+from scraper import api, api_carreras, api_mallas, salud, views
 from Test_Ikigai.views import PreguntasIkigaiView, ResultadoIkigaiView
 
 urlpatterns = [
@@ -34,6 +34,10 @@ urlpatterns = [
     path('api/v1/ofertas/<int:pk>/', api.OfertaDetailView.as_view(), name='api_oferta_detalle'),
     path('api/v1/carreras/', api_carreras.CarreraListView.as_view(), name='api_carreras'),
     path('api/v1/carreras/<int:pk>/', api_carreras.CarreraDetailView.as_view(), name='api_carrera_detalle'),
+    # Mallas en PDF para descargar (redirige a un enlace prefirmado de S3)
+    path('api/v1/carreras/<int:pk>/malla.pdf', api_mallas.MallaPdfView.as_view(), name='api_carrera_malla_pdf'),
+    path('api/v1/carreras/<int:pk>/menciones/<int:mencion_id>/malla.pdf', api_mallas.MencionMallaPdfView.as_view(),
+         name='api_mencion_malla_pdf'),
     path('api/v1/filtros/', api.FiltrosView.as_view(), name='api_filtros'),
     # Test vocacional Ikigai: preguntas validadas por juicio de expertos y cálculo del resultado
     path('api/v1/ikigai/preguntas/', PreguntasIkigaiView.as_view(), name='ikigai_preguntas'),

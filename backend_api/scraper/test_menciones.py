@@ -200,9 +200,10 @@ class ApiMencionesTests(TestCase):
     def test_detalle_de_carrera_incluye_menciones(self):
         datos = APIClient().get(f'/api/v1/carreras/{self.gastronomia.id}/').json()
         self.assertEqual(datos['nombre_base'], 'Gastronomía Internacional')
-        self.assertEqual(datos['menciones'], [
-            {'nombre': 'Alta Pastelería y Repostería', 'competencias': [], 'malla_url': None},
-            {'nombre': 'Cocina de Alta Gama', 'competencias': ['Elaborar'], 'malla_url': None},
+        sin_id = [{k: v for k, v in m.items() if k != 'id'} for m in datos['menciones']]
+        self.assertEqual(sin_id, [
+            {'nombre': 'Alta Pastelería y Repostería', 'competencias': [], 'malla_url': None, 'malla_pdf_url': None},
+            {'nombre': 'Cocina de Alta Gama', 'competencias': ['Elaborar'], 'malla_url': None, 'malla_pdf_url': None},
         ])
 
     def test_listado_de_carreras_y_ofertas_incluye_menciones(self):

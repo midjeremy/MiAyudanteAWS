@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from scraper.api import OfertaListView, PaginacionCatalogo
+from scraper.api_mallas import ruta_malla_pdf, ruta_malla_pdf_mencion
 from scraper.catalogos import AREAS_ESTUDIO
 from scraper.documentacion import FILTROS_CATALOGO, CarreraDetalleSerializer, CarreraPaginadaSerializer
 from scraper.models import Carrera
@@ -56,14 +57,22 @@ def datos_carrera(carrera, resumen, detalle):
         'duracion_semestres': carrera.duracion_semestres,
         'duracion_texto': duracion_texto,
         'duracion_meses': duracion_meses,
+        # Malla digital en el sitio de la institución y descarga en PDF (ruta relativa de esta API)
         'malla_url': carrera.url_malla,
+        'malla_pdf_url': ruta_malla_pdf(carrera),
         'area_estudio': carrera.area_estudio,
         'area_estudio_nombre': AREAS_ESTUDIO.get(carrera.area_estudio, ''),
         'area_institucion': carrera.area_institucion,
         # Nombre sin la mención: agrupa las carreras que se publican una por mención
         'nombre_base': carrera.nombre_base or carrera.nombre_carrera,
         'menciones': [
-            {'nombre': m.nombre, 'competencias': [c for c in m.competencias.splitlines() if c], 'malla_url': m.url_malla}
+            {
+                'id': m.id,
+                'nombre': m.nombre,
+                'competencias': [c for c in m.competencias.splitlines() if c],
+                'malla_url': m.url_malla,
+                'malla_pdf_url': ruta_malla_pdf_mencion(m),
+            }
             for m in carrera.menciones.all()
         ],
         'total_ofertas': resumen.get('total_ofertas', 0),
