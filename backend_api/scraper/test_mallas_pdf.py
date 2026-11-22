@@ -171,6 +171,21 @@ class DescargaMallaTests(TestCase):
                          f'/api/v1/carreras/{self.carrera.id}/menciones/{self.mencion.id}/malla.pdf')
         self.assertIsNone(menciones['Ciberseguridad']['malla_pdf_url'])
 
+    def test_la_api_de_ofertas_tambien(self):
+        from scraper.models import Jornada, OfertaAcademica, Sede
+
+        sede = Sede.objects.create(nombre_sede='San Joaquín', institucion=self.carrera.institucion)
+        oferta = OfertaAcademica.objects.create(
+            carrera=self.carrera, institucion=self.carrera.institucion, sede=sede,
+            jornada=Jornada.objects.create(tipo_jornada='Diurna', modalidad='Presencial'),
+        )
+        datos = self.client.get(reverse('api_oferta_detalle', args=[oferta.id])).json()
+        self.assertEqual(datos['malla_pdf_url'], f'/api/v1/carreras/{self.carrera.id}/malla.pdf')
+        self.assertEqual(datos['mallas_menciones'], [{
+            'nombre': 'Big Data', 'malla_url': URL_BIG_DATA,
+            'malla_pdf_url': f'/api/v1/carreras/{self.carrera.id}/menciones/{self.mencion.id}/malla.pdf',
+        }])
+
 
 class AdminMencionesTests(TestCase):
     def setUp(self):
