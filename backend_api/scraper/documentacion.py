@@ -33,9 +33,11 @@ RangoMesesSerializer = inline_serializer('RangoMeses', {
 }, allow_null=True)
 
 MencionSerializer = inline_serializer('Mencion', {
+    'id': serializers.IntegerField(),
     'nombre': serializers.CharField(help_text='Por ejemplo "Finanzas" o "Cocina de Alta Gama"'),
     'competencias': serializers.ListField(child=serializers.CharField()),
     'malla_url': serializers.CharField(allow_null=True, help_text='Malla propia de la mención; null si la carrera tiene una sola'),
+    'malla_pdf_url': serializers.CharField(allow_null=True, help_text='Descarga en PDF de la malla de la mención'),
 })
 
 CAMPOS_CARRERA = {
@@ -48,7 +50,8 @@ CAMPOS_CARRERA = {
     'duracion_semestres': serializers.IntegerField(allow_null=True, help_text='Solo si se publica en semestres'),
     'duracion_texto': serializers.CharField(help_text='Tal como la publica la institución'),
     'duracion_meses': RangoMesesSerializer,
-    'malla_url': serializers.CharField(allow_null=True),
+    'malla_url': serializers.CharField(allow_null=True, help_text='Malla digital en el sitio de la institución'),
+    'malla_pdf_url': serializers.CharField(allow_null=True, help_text='Ruta de esta API para descargar la malla en PDF'),
     'area_estudio': serializers.CharField(help_text='Clave común con el test Ikigai; vacía si no se pudo determinar'),
     'area_estudio_nombre': serializers.CharField(),
     'area_institucion': serializers.CharField(help_text='Área (INACAP) o escuela (Duoc UC) tal como se publica'),
