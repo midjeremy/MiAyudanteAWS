@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from scraper.api import OfertaListView, PaginacionCatalogo
-from scraper.api_mallas import ruta_malla_pdf, ruta_malla_pdf_mencion
+from scraper.api_mallas import mallas_digitales, ruta_malla_pdf, ruta_malla_pdf_mencion
 from scraper.catalogos import AREAS_ESTUDIO
 from scraper.documentacion import FILTROS_CATALOGO, CarreraDetalleSerializer, CarreraPaginadaSerializer
 from scraper.models import Carrera
@@ -60,6 +60,8 @@ def datos_carrera(carrera, resumen, detalle):
         # Malla digital en el sitio de la institución y descarga en PDF (ruta relativa de esta API)
         'malla_url': carrera.url_malla,
         'malla_pdf_url': ruta_malla_pdf(carrera),
+        'mallas_digitales': mallas_digitales(carrera),
+        'url_carrera': carrera.url_carrera or None,
         'area_estudio': carrera.area_estudio,
         'area_estudio_nombre': AREAS_ESTUDIO.get(carrera.area_estudio, ''),
         'area_institucion': carrera.area_institucion,

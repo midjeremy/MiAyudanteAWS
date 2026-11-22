@@ -2,7 +2,7 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from scraper.api_mallas import ruta_malla_pdf, ruta_malla_pdf_mencion
+from scraper.api_mallas import mallas_digitales, ruta_malla_pdf, ruta_malla_pdf_mencion
 from scraper.catalogos import AREAS_ESTUDIO
 from scraper.models import OfertaAcademica
 
@@ -19,6 +19,8 @@ class OfertaSerializer(serializers.ModelSerializer):
     malla_url = serializers.CharField(source='carrera.url_malla')
     malla_pdf_url = serializers.SerializerMethodField()
     mallas_menciones = serializers.SerializerMethodField()
+    mallas_digitales = serializers.SerializerMethodField()
+    url_carrera = serializers.SerializerMethodField()
     area_estudio = serializers.CharField(source='carrera.area_estudio')
     area_estudio_nombre = serializers.SerializerMethodField()
     area_institucion = serializers.CharField(source='carrera.area_institucion')
@@ -42,7 +44,8 @@ class OfertaSerializer(serializers.ModelSerializer):
         model = OfertaAcademica
         fields = [
             'id', 'institucion', 'institucion_codigo', 'carrera_id', 'carrera', 'nivel', 'titulo',
-            'duracion_semestres', 'duracion_texto', 'duracion_meses', 'malla_url', 'malla_pdf_url', 'mallas_menciones',
+            'duracion_semestres', 'duracion_texto', 'duracion_meses', 'malla_url', 'malla_pdf_url', 'mallas_menciones', 'mallas_digitales',
+            'url_carrera',
             'area_estudio',
             'area_estudio_nombre', 'area_institucion', 'nombre_base', 'menciones', 'sede', 'region', 'direccion',
             'jornada', 'modalidad', 'valor_matricula', 'matricula_periodo', 'valor_mensual', 'valor_semestral',
@@ -61,6 +64,15 @@ class OfertaSerializer(serializers.ModelSerializer):
     def get_malla_pdf_url(self, oferta) -> str | None:
         """Ruta de esta API para descargar la malla en PDF; null si no hay PDF."""
         return ruta_malla_pdf(oferta.carrera)
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_mallas_digitales(self, oferta):
+        """Botones 'Ver malla …' de la institución: [{etiqueta, url}] (INACAP: diurna y vespertina si cambian)."""
+        return mallas_digitales(oferta.carrera)
+
+    def get_url_carrera(self, oferta) -> str | None:
+        """Página de la carrera en el sitio de la institución."""
+        return oferta.carrera.url_carrera or None
 
     @extend_schema_field(OpenApiTypes.OBJECT)
     def get_mallas_menciones(self, oferta):

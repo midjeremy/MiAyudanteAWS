@@ -43,8 +43,15 @@ class Carrera(models.Model):
     s3_url_malla_pdf = models.TextField(blank=True, null=True)
     # Respaldo de la malla en HTML (Duoc UC la publica como página web, no como PDF)
     s3_malla_html = models.TextField(blank=True, default='')
-    # Malla digital en el sitio de la institución
+    # Malla digital en el sitio de la institución (la principal, o la única)
     url_malla = models.URLField(max_length=500, blank=True, null=True)
+    # Todas las mallas digitales tal como se publican: INACAP separa a veces 'Malla diurna' y 'Malla vespertina'.
+    # [{'etiqueta': 'Malla diurna', 'url': 'https://siga.inacap.cl/…'}]
+    mallas_digitales = models.JSONField(default=list, blank=True)
+    # PDF de la malla en el sitio de la institución (INACAP lo publica; Duoc UC no)
+    url_malla_pdf = models.URLField(max_length=500, blank=True, null=True)
+    # Página de la carrera en el sitio de la institución
+    url_carrera = models.URLField(max_length=500, blank=True, default='')
     # Agrupación tal como la publica la institución (INACAP: área; Duoc UC: escuela)
     area_institucion = models.CharField(max_length=100, blank=True, default='')
     # Área común con el test Ikigai (tecnologia, salud, economia, ...); vacío si no se pudo determinar
