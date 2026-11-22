@@ -22,7 +22,7 @@ class InstitucionAdmin(admin.ModelAdmin):
 class MencionInline(admin.TabularInline):
     model = Mencion
     extra = 0
-    fields = ('nombre', 'competencias')
+    fields = ('nombre', 'competencias', 'url_malla')
 
 
 @admin.register(Carrera)

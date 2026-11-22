@@ -51,7 +51,7 @@ def guardar_menciones(carrera, menciones):
             continue
         Mencion.objects.update_or_create(
             carrera=carrera, nombre=nombre,
-            defaults={'competencias': '\n'.join(mencion.get('competencias') or [])},
+            defaults={'competencias': '\n'.join(mencion.get('competencias') or []), 'url_malla': mencion.get('url_malla')},
         )
         vigentes.append(nombre)
     carrera.menciones.exclude(nombre__in=vigentes).delete()

@@ -63,7 +63,7 @@ def datos_carrera(carrera, resumen, detalle):
         # Nombre sin la mención: agrupa las carreras que se publican una por mención
         'nombre_base': carrera.nombre_base or carrera.nombre_carrera,
         'menciones': [
-            {'nombre': m.nombre, 'competencias': [c for c in m.competencias.splitlines() if c]}
+            {'nombre': m.nombre, 'competencias': [c for c in m.competencias.splitlines() if c], 'malla_url': m.url_malla}
             for m in carrera.menciones.all()
         ],
         'total_ofertas': resumen.get('total_ofertas', 0),
