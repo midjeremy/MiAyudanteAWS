@@ -68,6 +68,8 @@ class Mencion(models.Model):
     carrera = models.ForeignKey(Carrera, on_delete=models.CASCADE, related_name='menciones')
     nombre = models.CharField(max_length=150)
     competencias = models.TextField(blank=True, default='', help_text='Competencias de la mención, una por línea')
+    # Malla propia de la mención (Ingeniería en Informática publica una por mención); vacía si la carrera tiene una sola
+    url_malla = models.URLField(max_length=500, blank=True, null=True)
 
     class Meta:
         verbose_name = 'mención'

@@ -6,7 +6,8 @@ from scrapy.http import HtmlResponse, Request
 from chatbot.services import buscar_carreras
 from scraper.duoc.carga import cargar_items, guardar_menciones, obtener_institucion
 from scraper.duoc.spider import (
-    DuocSpider, extraer_menciones, limpiar_mencion, mencion_del_nombre, nombre_sin_mencion,
+    DuocSpider, extraer_menciones, formatear_mencion, limpiar_mencion, mallas_de_menciones, mencion_del_nombre,
+    nombre_sin_mencion,
 )
 from scraper.models import Carrera, Mencion
 
@@ -37,6 +38,39 @@ HTML_GASTRONOMIA = """
 """
 
 
+# Ingeniería en Informática publica una malla por mención; cada botón apunta a su contenedor por data-dmc-id
+HTML_INFORMATICA = """
+<html><body>
+<h1 class=" name">Ingeniería en Informática</h1>
+<div class="dmc-root" data-dmc-id="ingdatos" data-dmc-src="https://malla.duoc.cl/mallas/x/050-ing-informatica-ingdatos.html"></div>
+<div class="dmc-root" data-dmc-id="intartificial" data-dmc-src="https://malla.duoc.cl/mallas/x/050-ing-informatica-intartificial.html"></div>
+<h3 class="texto-malla">MALLA DE LA CARRERA</h3>
+<h3 class="texto-malla"><b>MALLA:</b> INGENIERO(A) EN INFORMÁTICA MENCIÓN INTELIGENCIA ARTIFICIAL</h3>
+<div class="dmc-abrir-malla"><a href="https://www.duoc.cl/carreras/ingenieria-en-informatica/#dmc-malla-intartificial">Ver malla curricular</a></div>
+<h3 class="texto-malla"><b>MALLA:</b> INGENIERO(A) EN INFORMÁTICA MENCIÓN EN INGENIERÍA DE DATOS</h3>
+<div class="dmc-abrir-malla"><a href="#dmc-malla-ingdatos">Ver malla curricular</a></div>
+<div class="card">
+  <div class="card-header collapsed"><h4 class="mb-0">Competencias de la Carrera</h4></div>
+  <div class="collapse"><ul><li>Desarrollar soluciones.</li></ul></div>
+</div>
+</body></html>
+"""
+
+# Con una sola malla el botón apunta a '#dmc-malla' y el contenedor no trae data-dmc-id
+HTML_FINANZAS = """
+<html><body>
+<h1 class=" name">Ingeniería en Administración Mención Finanzas</h1>
+<div class="dmc-root" data-dmc-src="https://malla.duoc.cl/mallas/x/007-ing-administracion-m-finanzas.html"></div>
+<h3 class="texto-malla"><b>MALLA:</b> INGENIERÍA EN ADMINISTRACIÓN MENCIÓN FINANZAS</h3>
+<div class="dmc-abrir-malla"><a href="#dmc-malla">Ver malla curricular</a></div>
+<div class="card">
+  <div class="card-header collapsed"><h4 class="mb-0">Competencias de la Mención: "Mención Finanzas"</h4></div>
+  <div class="collapse"><ul><li>Gestionar finanzas.</li></ul></div>
+</div>
+</body></html>
+"""
+
+
 def respuesta(html, url='https://www.duoc.cl/carreras/gastronomia-internacional-2/'):
     return HtmlResponse(url=url, body=html.encode('utf-8'), encoding='utf-8', request=Request(url))
 
@@ -56,18 +90,52 @@ class LimpiezaMencionTests(SimpleTestCase):
         self.assertEqual(mencion_del_nombre('Analista Programador'), '')
 
 
+class MallasDeMencionTests(SimpleTestCase):
+    def test_formatea_los_titulos_en_mayusculas(self):
+        self.assertEqual(formatear_mencion('INTELIGENCIA ARTIFICIAL'), 'Inteligencia Artificial')
+        self.assertEqual(formatear_mencion('EN INGENIERÍA DE DATOS'), 'Ingeniería de Datos')
+        self.assertEqual(formatear_mencion('MARKETING E IDENTIDAD CORPORATIVA'), 'Marketing e Identidad Corporativa')
+        self.assertEqual(formatear_mencion('ANIMACIÓN 3D'), 'Animación 3D')
+        self.assertEqual(formatear_mencion('Cocina de Alta Gama'), 'Cocina de Alta Gama')
+
+    def test_cada_mencion_con_su_malla(self):
+        self.assertEqual(mallas_de_menciones(respuesta(HTML_INFORMATICA)), [
+            ('Inteligencia Artificial', 'https://malla.duoc.cl/mallas/x/050-ing-informatica-intartificial.html'),
+            ('Ingeniería de Datos', 'https://malla.duoc.cl/mallas/x/050-ing-informatica-ingdatos.html'),
+        ])
+
+    def test_una_sola_malla_sin_identificador(self):
+        self.assertEqual(mallas_de_menciones(respuesta(HTML_FINANZAS)),
+                         [('Finanzas', 'https://malla.duoc.cl/mallas/x/007-ing-administracion-m-finanzas.html')])
+
+    def test_las_mallas_sin_mencion_no_cuentan(self):
+        html = HTML_FINANZAS.replace(' MENCIÓN FINANZAS', ' (ONLINE)')
+        self.assertEqual(mallas_de_menciones(respuesta(html)), [])
+
+
 class ExtraerMencionesTests(SimpleTestCase):
+    def test_menciones_publicadas_solo_como_mallas(self):
+        menciones = extraer_menciones(respuesta(HTML_INFORMATICA), 'Ingeniería en Informática')
+        self.assertEqual([m['nombre'] for m in menciones], ['Inteligencia Artificial', 'Ingeniería de Datos'])
+        self.assertTrue(all(m['url_malla'] for m in menciones))
+
+    def test_no_repite_la_mencion_del_acordeon_y_de_la_malla(self):
+        self.assertEqual(extraer_menciones(respuesta(HTML_FINANZAS), 'Ingeniería en Administración Mención Finanzas'), [
+            {'nombre': 'Finanzas', 'competencias': ['Gestionar finanzas.'],
+             'url_malla': 'https://malla.duoc.cl/mallas/x/007-ing-administracion-m-finanzas.html'},
+        ])
+
     def test_una_carrera_con_dos_menciones_y_sus_competencias(self):
         self.assertEqual(extraer_menciones(respuesta(HTML_GASTRONOMIA), 'Gastronomía Internacional'), [
-            {'nombre': 'Cocina de Alta Gama', 'competencias': ['Elaborar productos de alta gama.']},
+            {'nombre': 'Cocina de Alta Gama', 'competencias': ['Elaborar productos de alta gama.'], 'url_malla': None},
             {'nombre': 'Alta Pastelería y Repostería',
-             'competencias': ['Elaborar pastelería de alta gama.', 'Presentar con fina técnica.']},
+             'competencias': ['Elaborar pastelería de alta gama.', 'Presentar con fina técnica.'], 'url_malla': None},
         ])
 
     def test_sin_tarjeta_usa_la_mencion_del_nombre(self):
         html = '<html><body><h1>Contabilidad General Mención Legislación Tributaria</h1></body></html>'
         self.assertEqual(extraer_menciones(respuesta(html), 'Contabilidad General Mención Legislación Tributaria'),
-                         [{'nombre': 'Legislación Tributaria', 'competencias': []}])
+                         [{'nombre': 'Legislación Tributaria', 'competencias': [], 'url_malla': None}])
 
     def test_carrera_sin_mencion(self):
         html = HTML_GASTRONOMIA.split('<div class="card">')[0] + '</body></html>'
@@ -90,13 +158,14 @@ def item_carrera(nombre, menciones, sede='Maipú', url='https://www.duoc.cl/carr
 
 class CargaMencionesTests(TestCase):
     def test_guarda_menciones_y_nombre_base(self):
+        malla = 'https://malla.duoc.cl/mallas/x/finanzas.html'
         cargar_items([item_carrera('Ingeniería en Administración Mención Finanzas',
-                                   [{'nombre': 'Finanzas', 'competencias': ['Gestionar', 'Evaluar']}])],
+                                   [{'nombre': 'Finanzas', 'competencias': ['Gestionar', 'Evaluar'], 'url_malla': malla}])],
                      obtener_institucion())
         carrera = Carrera.objects.get()
         self.assertEqual(carrera.nombre_base, 'Ingeniería en Administración')
         mencion = carrera.menciones.get()
-        self.assertEqual((mencion.nombre, mencion.competencias), ('Finanzas', 'Gestionar\nEvaluar'))
+        self.assertEqual((mencion.nombre, mencion.competencias, mencion.url_malla), ('Finanzas', 'Gestionar\nEvaluar', malla))
 
     def test_quita_las_menciones_que_ya_no_se_publican(self):
         duoc = obtener_institucion()
@@ -132,8 +201,8 @@ class ApiMencionesTests(TestCase):
         datos = APIClient().get(f'/api/v1/carreras/{self.gastronomia.id}/').json()
         self.assertEqual(datos['nombre_base'], 'Gastronomía Internacional')
         self.assertEqual(datos['menciones'], [
-            {'nombre': 'Alta Pastelería y Repostería', 'competencias': []},
-            {'nombre': 'Cocina de Alta Gama', 'competencias': ['Elaborar']},
+            {'nombre': 'Alta Pastelería y Repostería', 'competencias': [], 'malla_url': None},
+            {'nombre': 'Cocina de Alta Gama', 'competencias': ['Elaborar'], 'malla_url': None},
         ])
 
     def test_listado_de_carreras_y_ofertas_incluye_menciones(self):

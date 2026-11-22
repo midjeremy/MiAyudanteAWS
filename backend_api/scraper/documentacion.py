@@ -35,6 +35,7 @@ RangoMesesSerializer = inline_serializer('RangoMeses', {
 MencionSerializer = inline_serializer('Mencion', {
     'nombre': serializers.CharField(help_text='Por ejemplo "Finanzas" o "Cocina de Alta Gama"'),
     'competencias': serializers.ListField(child=serializers.CharField()),
+    'malla_url': serializers.CharField(allow_null=True, help_text='Malla propia de la mención; null si la carrera tiene una sola'),
 })
 
 CAMPOS_CARRERA = {

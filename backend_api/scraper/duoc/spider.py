@@ -4,6 +4,8 @@ from urllib.parse import urlsplit
 from scrapy import Request
 from scrapy.spiders import SitemapSpider
 
+from scraper.catalogos import normalizar_texto
+
 
 def limpiar_dinero(texto):
     solo_numeros = re.sub(r'[^\d]', '', texto or '')
@@ -45,14 +47,74 @@ def mencion_del_nombre(nombre):
     return partes[1].strip() if len(partes) == 2 else ''
 
 
-def extraer_menciones(response, nombre=''):
-    """Menciones de la página de una carrera, con sus competencias.
+_CONECTORES = {'de', 'del', 'la', 'las', 'el', 'los', 'y', 'e', 'en', 'o', 'u', 'a', 'al', 'para', 'con', 'por'}
 
-    Duoc UC las publica en el acordeón de competencias: una tarjeta por mención ('Competencias de la Mención:
-    "Cocina de Alta Gama"' o 'Mención Administración Hotelera'), aparte de 'Competencias de la Carrera'.
-    Si la página no trae esa tarjeta pero el nombre sí trae la mención, se usa la del nombre.
+
+def formatear_mencion(texto):
+    """'INTELIGENCIA ARTIFICIAL' -> 'Inteligencia Artificial'; 'EN INGENIERÍA DE DATOS' -> 'Ingeniería de Datos'.
+
+    Los títulos de las mallas vienen en mayúsculas; un nombre que ya trae mayúsculas y minúsculas se respeta.
+    """
+    limpio = ' '.join((texto or '').split()).strip(' "\'\u201c\u201d.')
+    limpio = re.sub(r'^en\s+', '', limpio, flags=re.IGNORECASE)
+    if limpio != limpio.upper():
+        return limpio
+    palabras = []
+    for posicion, palabra in enumerate(limpio.lower().split()):
+        if any(caracter.isdigit() for caracter in palabra):
+            palabras.append(palabra.upper())  # 2D, 3D
+        elif posicion and palabra in _CONECTORES:
+            palabras.append(palabra)
+        else:
+            palabras.append(palabra[:1].upper() + palabra[1:])
+    return ' '.join(palabras)
+
+
+def mallas_de_menciones(response):
+    """[(mención, URL de su malla)] desde los títulos 'MALLA: INGENIERO(A) EN INFORMÁTICA MENCIÓN EN …'.
+
+    Cada título va seguido de un botón que enlaza a '#dmc-malla-<id>'; el contenedor con data-dmc-id="<id>"
+    tiene en data-dmc-src la URL de esa malla. Los títulos sin mención (por ejemplo, '(ONLINE)') se ignoran.
+    """
+    fuentes = {el.attrib.get('data-dmc-id'): el.attrib.get('data-dmc-src')
+               for el in response.css('[data-dmc-id][data-dmc-src]')}
+    # Con una sola malla el botón enlaza a '#dmc-malla' y el contenedor no trae data-dmc-id
+    todas = response.css('[data-dmc-src]::attr(data-dmc-src)').getall()
+    unica = todas[0] if len(todas) == 1 else None
+    resultado = []
+    for titulo_malla in response.xpath('//h3[starts-with(normalize-space(.), "MALLA:")]'):
+        titulo = ' '.join(' '.join(titulo_malla.xpath('.//text()').getall()).split())
+        partes = _PATRON_MENCION_EN_NOMBRE.split(titulo, maxsplit=1)
+        if len(partes) != 2:
+            continue
+        enlace = titulo_malla.xpath('following-sibling::*[1]//a/@href').get() or ''
+        clave = enlace.split('#dmc-malla-', 1)[1] if '#dmc-malla-' in enlace else ''
+        resultado.append((formatear_mencion(partes[1]), fuentes.get(clave) or unica))
+    return resultado
+
+
+def extraer_menciones(response, nombre=''):
+    """Menciones de la página de una carrera, con sus competencias y su malla.
+
+    Duoc UC las publica de tres formas, que se combinan sin repetir (se comparan sin tildes ni mayúsculas):
+    1. En el acordeón de competencias: 'Competencias de la Mención: "Cocina de Alta Gama"' o
+       'Mención Administración Hotelera' (aparte de 'Competencias de la Carrera').
+    2. Como varias mallas: 'MALLA: INGENIERO(A) EN INFORMÁTICA MENCIÓN EN INGENIERÍA DE DATOS', cada una con su
+       URL (Ingeniería en Informática tiene 5).
+    3. En el nombre de la carrera ('Ingeniería en Administración Mención Finanzas'), si no hay ninguna de las otras.
     """
     menciones = {}
+
+    def agregar(titulo, competencias=None, url_malla=None):
+        clave = normalizar_texto(titulo)
+        if not clave:
+            return
+        mencion = menciones.setdefault(clave, {'nombre': titulo, 'competencias': [], 'url_malla': None})
+        if competencias and not mencion['competencias']:
+            mencion['competencias'] = competencias
+        if url_malla and not mencion['url_malla']:
+            mencion['url_malla'] = url_malla
+
     for cabecera in response.xpath('//div[contains(@class, "card-header")][.//h4[contains(., "Mención")]]'):
         titulo = limpiar_mencion(' '.join(cabecera.xpath('.//h4//text()').getall()))
         if not titulo or titulo.lower().startswith('competencias de la carrera'):
@@ -61,10 +123,12 @@ def extraer_menciones(response, nombre=''):
             ' '.join(' '.join(li.xpath('.//text()').getall()).split())
             for li in cabecera.xpath('following-sibling::div[1]//li')
         ]
-        menciones.setdefault(titulo, [c for c in competencias if c])
+        agregar(titulo, [c for c in competencias if c])
+    for titulo, url_malla in mallas_de_menciones(response):
+        agregar(titulo, url_malla=url_malla)
     if not menciones and mencion_del_nombre(nombre):
-        menciones[mencion_del_nombre(nombre)] = []
-    return [{'nombre': titulo, 'competencias': competencias} for titulo, competencias in menciones.items()]
+        agregar(mencion_del_nombre(nombre))
+    return list(menciones.values())
 
 
 def normalizar_nombre_sede(texto):
