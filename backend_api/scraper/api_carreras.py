@@ -60,6 +60,12 @@ def datos_carrera(carrera, resumen, detalle):
         'area_estudio': carrera.area_estudio,
         'area_estudio_nombre': AREAS_ESTUDIO.get(carrera.area_estudio, ''),
         'area_institucion': carrera.area_institucion,
+        # Nombre sin la mención: agrupa las carreras que se publican una por mención
+        'nombre_base': carrera.nombre_base or carrera.nombre_carrera,
+        'menciones': [
+            {'nombre': m.nombre, 'competencias': [c for c in m.competencias.splitlines() if c]}
+            for m in carrera.menciones.all()
+        ],
         'total_ofertas': resumen.get('total_ofertas', 0),
         'total_sedes': resumen.get('total_sedes', 0),
         'sedes': sorted(detalle['sedes']),
@@ -109,6 +115,7 @@ class CarreraListView(APIView):
         carreras = (
             Carrera.objects.filter(id__in=ofertas.order_by().values('carrera_id'))
             .select_related('institucion')
+            .prefetch_related('menciones')
             .order_by('institucion__codigo', 'nombre_carrera', 'id')
         )
         paginador = PaginacionCatalogo()
@@ -127,7 +134,7 @@ class CarreraDetailView(APIView):
     @extend_schema(tags=['Catálogo'], summary='Detalle de una carrera con todas sus ofertas',
                    responses=CarreraDetalleSerializer)
     def get(self, request, pk):
-        carrera = get_object_or_404(Carrera.objects.select_related('institucion'), pk=pk)
+        carrera = get_object_or_404(Carrera.objects.select_related('institucion').prefetch_related('menciones'), pk=pk)
         ofertas = OfertaListView.queryset.filter(carrera=carrera)
         resumenes, detalles = resumir(ofertas, [carrera.id])
         datos = datos_carrera(carrera, resumenes.get(carrera.id, {}), detalles[carrera.id])

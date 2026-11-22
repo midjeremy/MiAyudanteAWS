@@ -32,6 +32,11 @@ RangoMesesSerializer = inline_serializer('RangoMeses', {
     'max': serializers.IntegerField(),
 }, allow_null=True)
 
+MencionSerializer = inline_serializer('Mencion', {
+    'nombre': serializers.CharField(help_text='Por ejemplo "Finanzas" o "Cocina de Alta Gama"'),
+    'competencias': serializers.ListField(child=serializers.CharField()),
+})
+
 CAMPOS_CARRERA = {
     'id': serializers.IntegerField(),
     'carrera': serializers.CharField(),
@@ -46,6 +51,8 @@ CAMPOS_CARRERA = {
     'area_estudio': serializers.CharField(help_text='Clave común con el test Ikigai; vacía si no se pudo determinar'),
     'area_estudio_nombre': serializers.CharField(),
     'area_institucion': serializers.CharField(help_text='Área (INACAP) o escuela (Duoc UC) tal como se publica'),
+    'nombre_base': serializers.CharField(help_text='Nombre sin la mención; agrupa las carreras publicadas una por mención'),
+    'menciones': MencionSerializer.__class__(many=True),
     'total_ofertas': serializers.IntegerField(),
     'total_sedes': serializers.IntegerField(),
     'sedes': serializers.ListField(child=serializers.CharField()),

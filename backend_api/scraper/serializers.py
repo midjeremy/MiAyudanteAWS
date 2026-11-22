@@ -19,6 +19,8 @@ class OfertaSerializer(serializers.ModelSerializer):
     area_estudio = serializers.CharField(source='carrera.area_estudio')
     area_estudio_nombre = serializers.SerializerMethodField()
     area_institucion = serializers.CharField(source='carrera.area_institucion')
+    nombre_base = serializers.SerializerMethodField()
+    menciones = serializers.SerializerMethodField()
     sede = serializers.CharField(source='sede.nombre_sede')
     region = serializers.CharField(source='sede.region')
     direccion = serializers.CharField(source='sede.direccion')
@@ -38,11 +40,19 @@ class OfertaSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'institucion', 'institucion_codigo', 'carrera_id', 'carrera', 'nivel', 'titulo',
             'duracion_semestres', 'duracion_texto', 'duracion_meses', 'malla_url', 'area_estudio',
-            'area_estudio_nombre', 'area_institucion', 'sede', 'region', 'direccion',
+            'area_estudio_nombre', 'area_institucion', 'nombre_base', 'menciones', 'sede', 'region', 'direccion',
             'jornada', 'modalidad', 'valor_matricula', 'matricula_periodo', 'valor_mensual', 'valor_semestral',
             'valor_anual', 'aranceles_calculados', 'arancel_referencia', 'arancel_publicado',
         ]
         read_only_fields = fields
+
+    def get_nombre_base(self, oferta) -> str:
+        """Nombre de la carrera sin la mención ('Ingeniería en Administración')."""
+        return oferta.carrera.nombre_base or oferta.carrera.nombre_carrera
+
+    def get_menciones(self, oferta) -> list[str]:
+        """Menciones de la carrera ('Finanzas', 'Cocina de Alta Gama'...); vacía si no tiene."""
+        return [mencion.nombre for mencion in oferta.carrera.menciones.all()]
 
     def get_area_estudio_nombre(self, oferta) -> str:
         """Nombre del área común con el test Ikigai, por ejemplo 'Tecnología'."""

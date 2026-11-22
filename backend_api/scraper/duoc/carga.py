@@ -6,8 +6,8 @@ from scraper.catalogos import (
     area_duoc, clasificar_area, clasificar_nivel, elegir_duracion, normalizar_jornada, parsear_duraciones,
     region_de_sede, semestres_publicados,
 )
-from scraper.duoc.spider import normalizar_nombre_sede, ruta_carrera
-from scraper.models import Carrera, Institucion, Jornada, OfertaAcademica, Sede
+from scraper.duoc.spider import nombre_sin_mencion, normalizar_nombre_sede, ruta_carrera
+from scraper.models import Carrera, Institucion, Jornada, Mencion, OfertaAcademica, Sede
 
 MINIMO_CARRERAS = 60
 
@@ -35,6 +35,26 @@ def areas_por_carrera(items):
             for ruta in item.get('carreras', []):
                 areas.setdefault(ruta, area)
     return areas
+
+
+def guardar_menciones(carrera, menciones):
+    """Deja en la base exactamente las menciones publicadas: crea, actualiza y quita las que ya no están.
+
+    Lotes antiguos en S3 no traen 'menciones' (None): en ese caso no se tocan las guardadas.
+    """
+    if menciones is None:
+        return
+    vigentes = []
+    for mencion in menciones:
+        nombre = (mencion.get('nombre') or '').strip()[:150]
+        if not nombre or nombre in vigentes:
+            continue
+        Mencion.objects.update_or_create(
+            carrera=carrera, nombre=nombre,
+            defaults={'competencias': '\n'.join(mencion.get('competencias') or [])},
+        )
+        vigentes.append(nombre)
+    carrera.menciones.exclude(nombre__in=vigentes).delete()
 
 
 def obtener_institucion():
@@ -92,8 +112,10 @@ def cargar_items(items, institucion, lote=None, cuotas_por_semestre=CUOTAS_POR_S
                 's3_url_malla_pdf': item.get('malla_s3'),
                 'area_institucion': escuela,
                 'area_estudio': clasificar_area(item['nombre'], area_institucional),
+                'nombre_base': nombre_sin_mencion(item['nombre']),
             },
         )
+        guardar_menciones(carrera, item.get('menciones'))
 
         for oferta in item['ofertas']:
             sede, _ = Sede.objects.get_or_create(nombre_sede=oferta['sede'], institucion=institucion)
