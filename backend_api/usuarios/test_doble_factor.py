@@ -22,10 +22,9 @@ CORREO = 'ana@correo.cl'
 CLAVE = 'Clave-Segura-2026'
 
 
-def codigo_incorrecto(secreto):
+def codigo_incorrecto(secreto, ahora):
     """Un código de 6 dígitos que no es válido en la ventana de ±30 s."""
     totp = pyotp.TOTP(secreto)
-    ahora = time.time()
     validos = {totp.at(ahora + desfase) for desfase in (-30, 0, 30)}
     return next(c for c in (f'{n:06d}' for n in range(1_000_000)) if c not in validos)
 
@@ -36,6 +35,17 @@ class DobleFactorTests(TestCase):
         self.usuario = get_user_model().objects.create_user(username=CORREO, email=CORREO, password=CLAVE,
                                                             first_name='Ana', last_name='Pérez')
         self.cliente = APIClient()
+        # Reloj controlado del TOTP: cada código se pide en un paso de 30 s nuevo, porque un código ya usado
+        # no vuelve a servir (activar y luego iniciar sesión con el mismo código ahora se rechaza)
+        self.reloj = time.time()
+        reloj = mock.patch('usuarios.doble_factor._ahora', side_effect=lambda: self.reloj)
+        reloj.start()
+        self.addCleanup(reloj.stop)
+
+    def codigo(self, secreto):
+        """Código TOTP del paso siguiente (avanza el reloj 30 s)."""
+        self.reloj += 30
+        return pyotp.TOTP(secreto).at(self.reloj)
 
     def login(self):
         return self.cliente.post(LOGIN, {'correo': CORREO, 'password': CLAVE}, format='json')
@@ -51,7 +61,7 @@ class DobleFactorTests(TestCase):
         activacion = self.cliente.post(ACTIVAR, format='json')
         self.assertEqual(activacion.status_code, 200)
         secreto = activacion.data['secreto']
-        confirmacion = self.cliente.post(CONFIRMAR, {'codigo': pyotp.TOTP(secreto).now()}, format='json')
+        confirmacion = self.cliente.post(CONFIRMAR, {'codigo': self.codigo(secreto)}, format='json')
         self.assertEqual(confirmacion.status_code, 200)
         self.cliente.credentials()
         cache.clear()  # cada test parte con los límites de intentos en cero
@@ -89,7 +99,7 @@ class DobleFactorTests(TestCase):
     def test_confirmar_rechaza_codigo_incorrecto(self):
         self.autenticar()
         secreto = self.cliente.post(ACTIVAR, format='json').data['secreto']
-        respuesta = self.cliente.post(CONFIRMAR, {'codigo': codigo_incorrecto(secreto)}, format='json')
+        respuesta = self.cliente.post(CONFIRMAR, {'codigo': codigo_incorrecto(secreto, self.reloj)}, format='json')
         self.assertEqual(respuesta.status_code, 400)
         self.assertFalse(SegundoFactor.objects.get(usuario=self.usuario).activo)
 
@@ -106,8 +116,8 @@ class DobleFactorTests(TestCase):
             self.assertNotIn(codigo.replace('-', ''), segundo_factor.codigos_recuperacion)
         # Una segunda confirmación no vuelve a entregar códigos
         token = self.token_temporal()
-        self.cliente.credentials(HTTP_AUTHORIZATION=f"Bearer {self.verificar(token, pyotp.TOTP(secreto).now()).data['access']}")
-        repetida = self.cliente.post(CONFIRMAR, {'codigo': pyotp.TOTP(secreto).now()}, format='json')
+        self.cliente.credentials(HTTP_AUTHORIZATION=f"Bearer {self.verificar(token, self.codigo(secreto)).data['access']}")
+        repetida = self.cliente.post(CONFIRMAR, {'codigo': self.codigo(secreto)}, format='json')
         self.assertEqual(repetida.status_code, 409)
         self.assertNotIn('codigos_recuperacion', repetida.data)
         self.assertEqual(self.cliente.post(ACTIVAR, format='json').status_code, 409)
@@ -139,7 +149,7 @@ class DobleFactorTests(TestCase):
 
     def test_verificar_codigo_correcto_entrega_tokens(self):
         secreto, _ = self.activar_doble_factor()
-        respuesta = self.verificar(self.token_temporal(), pyotp.TOTP(secreto).now())
+        respuesta = self.verificar(self.token_temporal(), self.codigo(secreto))
         self.assertEqual(respuesta.status_code, 200)
         self.assertEqual(respuesta.data['usuario'], {'correo': CORREO, 'nombre': 'Ana Pérez'})
         self.assertIn('refresh', respuesta.data)
@@ -149,14 +159,14 @@ class DobleFactorTests(TestCase):
 
     def test_verificar_acepta_codigo_con_espacios(self):
         secreto, _ = self.activar_doble_factor()
-        codigo = pyotp.TOTP(secreto).now()
+        codigo = self.codigo(secreto)
         respuesta = self.verificar(self.token_temporal(), f'{codigo[:3]} {codigo[3:]}')
         self.assertEqual(respuesta.status_code, 200)
 
     def test_verificar_rechaza_codigo_incorrecto(self):
         secreto, _ = self.activar_doble_factor()
         token = self.token_temporal()
-        for codigo in (codigo_incorrecto(secreto), '', 'abc', None):
+        for codigo in (codigo_incorrecto(secreto, self.reloj), '', 'abc', None):
             respuesta = self.verificar(token, codigo)
             self.assertEqual(respuesta.status_code, 401, codigo)
             self.assertNotIn('access', respuesta.data)
@@ -166,7 +176,7 @@ class DobleFactorTests(TestCase):
         token = self.token_temporal()
         mas_tarde = time.time() + VIGENCIA_TOKEN_TEMPORAL + 1
         with mock.patch('django.core.signing.time.time', return_value=mas_tarde):
-            respuesta = self.verificar(token, pyotp.TOTP(secreto).now())
+            respuesta = self.verificar(token, self.codigo(secreto))
         self.assertEqual(respuesta.status_code, 401)
         self.assertIn('venció', respuesta.data['error'])
         self.assertTrue(respuesta.data['reiniciar'])
@@ -177,7 +187,7 @@ class DobleFactorTests(TestCase):
         token = self.token_temporal()
         casi = time.time() + VIGENCIA_TOKEN_TEMPORAL - 5
         with mock.patch('django.core.signing.time.time', return_value=casi):
-            respuesta = self.verificar(token, pyotp.TOTP(secreto).now())
+            respuesta = self.verificar(token, self.codigo(secreto))
         self.assertEqual(respuesta.status_code, 200)
 
     def test_verificar_rechaza_token_alterado_o_ausente(self):
@@ -186,7 +196,7 @@ class DobleFactorTests(TestCase):
         otro = get_user_model().objects.create_user(username='otro@correo.cl', email='otro@correo.cl', password=CLAVE)
         alterado = f'{otro.pk}:' + token.split(':', 1)[1]
         for valor in (alterado, token + 'x', '', None):
-            respuesta = self.verificar(valor, pyotp.TOTP(secreto).now())
+            respuesta = self.verificar(valor, self.codigo(secreto))
             self.assertEqual(respuesta.status_code, 401, valor)
             self.assertNotIn('access', respuesta.data)
 
@@ -207,11 +217,11 @@ class DobleFactorTests(TestCase):
     def test_verificar_limita_intentos(self):
         secreto, _ = self.activar_doble_factor()
         token = self.token_temporal()
-        malo = codigo_incorrecto(secreto)
+        malo = codigo_incorrecto(secreto, self.reloj)
         codigos = [self.verificar(token, malo).status_code for _ in range(5)]
         self.assertEqual(codigos, [401] * 5)
         # El sexto intento se bloquea aunque el código sea correcto
-        sexto = self.verificar(token, pyotp.TOTP(secreto).now())
+        sexto = self.verificar(token, self.codigo(secreto))
         self.assertEqual(sexto.status_code, 429)
         self.assertNotIn('access', sexto.data)
 
@@ -220,13 +230,13 @@ class DobleFactorTests(TestCase):
     def test_desactivar_exige_codigo_valido(self):
         secreto, _ = self.activar_doble_factor()
         token = self.token_temporal()
-        acceso = self.verificar(token, pyotp.TOTP(secreto).now()).data['access']
+        acceso = self.verificar(token, self.codigo(secreto)).data['access']
         self.cliente.credentials(HTTP_AUTHORIZATION=f'Bearer {acceso}')
 
-        self.assertEqual(self.cliente.post(DESACTIVAR, {'codigo': codigo_incorrecto(secreto)}, format='json').status_code, 400)
+        self.assertEqual(self.cliente.post(DESACTIVAR, {'codigo': codigo_incorrecto(secreto, self.reloj)}, format='json').status_code, 400)
         self.assertTrue(SegundoFactor.objects.get(usuario=self.usuario).activo)
 
-        respuesta = self.cliente.post(DESACTIVAR, {'codigo': pyotp.TOTP(secreto).now()}, format='json')
+        respuesta = self.cliente.post(DESACTIVAR, {'codigo': self.codigo(secreto)}, format='json')
         self.assertEqual(respuesta.status_code, 200)
         self.assertFalse(SegundoFactor.objects.filter(usuario=self.usuario).exists())
         self.assertFalse(self.cliente.get(PERFIL).data['doble_factor_activo'])
@@ -236,7 +246,7 @@ class DobleFactorTests(TestCase):
 
     def test_desactivar_con_codigo_de_recuperacion(self):
         secreto, codigos = self.activar_doble_factor()
-        acceso = self.verificar(self.token_temporal(), pyotp.TOTP(secreto).now()).data['access']
+        acceso = self.verificar(self.token_temporal(), self.codigo(secreto)).data['access']
         self.cliente.credentials(HTTP_AUTHORIZATION=f'Bearer {acceso}')
         respuesta = self.cliente.post(DESACTIVAR, {'codigo': codigos[3]}, format='json')
         self.assertEqual(respuesta.status_code, 200)
@@ -244,7 +254,7 @@ class DobleFactorTests(TestCase):
 
     def test_mis_datos_no_exporta_el_secreto(self):
         secreto, codigos = self.activar_doble_factor()
-        acceso = self.verificar(self.token_temporal(), pyotp.TOTP(secreto).now()).data['access']
+        acceso = self.verificar(self.token_temporal(), self.codigo(secreto)).data['access']
         self.cliente.credentials(HTTP_AUTHORIZATION=f'Bearer {acceso}')
         respuesta = self.cliente.get('/api/v1/auth/mis-datos/')
         self.assertEqual(respuesta.status_code, 200)

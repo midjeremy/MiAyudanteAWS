@@ -8,3 +8,7 @@
 
 # Ley 21.719 (plazo de conservación): el día 1 de cada mes a las 06:00 UTC se eliminan las cuentas sin acceso en 24 meses
 0 6 1 * * ubuntu cd /home/ubuntu/MiAyudanteAWS/backend_api && /home/ubuntu/MiAyudanteAWS/venv/bin/python manage.py purgar_cuentas_inactivas >> /home/ubuntu/purga_cuentas.log 2>&1
+
+# Cierre de sesión (lista negra de JWT): borra los tokens de refresco ya vencidos, que no sirven aunque estén revocados.
+# Cada hora, porque la EC2 solo está encendida durante las sesiones del Learner Lab; es una consulta liviana.
+37 * * * * ubuntu cd /home/ubuntu/MiAyudanteAWS/backend_api && /home/ubuntu/MiAyudanteAWS/venv/bin/python manage.py flushexpiredtokens >> /home/ubuntu/limpieza_tokens.log 2>&1

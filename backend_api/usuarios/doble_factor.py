@@ -3,12 +3,16 @@ import base64
 import io
 import re
 import secrets
+import time
 
 import pyotp
 import qrcode
 from django.core import signing
+from django.db.models import Q
 from django.utils.crypto import constant_time_compare, salted_hmac
 from qrcode.image.pure import PyPNGImage
+
+from .models import SegundoFactor
 
 EMISOR = 'Mi Ayudante'
 VIGENCIA_TOKEN_TEMPORAL = 5 * 60  # segundos
@@ -84,16 +88,46 @@ def hash_codigo(codigo):
     return salted_hmac(_SAL_RECUPERACION, _normalizar(codigo), algorithm='sha256').hexdigest()
 
 
-def verificar_codigo(segundo_factor, codigo, permitir_recuperacion=False):
-    """True si el código es un TOTP vigente (±30 s) o, si se permite, un código de recuperación sin usar.
+def _ahora():
+    return time.time()
 
-    Un código de recuperación correcto se elimina de inmediato (se guarda el cambio): es de un solo uso.
+
+def paso_del_codigo(secreto, codigo, ahora=None):
+    """Paso de 30 s (RFC 6238) al que corresponde el código, aceptando el anterior y el siguiente; None si no vale."""
+    totp = pyotp.TOTP(secreto)
+    actual = int((_ahora() if ahora is None else ahora) // totp.interval)
+    for paso in (actual - 1, actual, actual + 1):
+        if constant_time_compare(totp.generate_otp(paso), codigo):
+            return paso
+    return None
+
+
+def usar_paso_totp(segundo_factor, paso):
+    """Marca el paso como usado. False si ya se usó ese paso o uno posterior (código repetido).
+
+    La comparación y la escritura van en un solo UPDATE condicional: dos peticiones simultáneas con el mismo código
+    no pueden aceptarse las dos.
+    """
+    actualizados = (SegundoFactor.objects.filter(pk=segundo_factor.pk)
+                    .filter(Q(ultimo_paso_totp__isnull=True) | Q(ultimo_paso_totp__lt=paso))
+                    .update(ultimo_paso_totp=paso))
+    if actualizados:
+        segundo_factor.ultimo_paso_totp = paso
+    return bool(actualizados)
+
+
+def verificar_codigo(segundo_factor, codigo, permitir_recuperacion=False):
+    """True si el código es un TOTP vigente (±30 s) y sin usar o, si se permite, un código de recuperación sin usar.
+
+    Ambos son de un solo uso: un TOTP aceptado no vuelve a servir aunque siga dentro de su ventana (RFC 6238,
+    sección 5.2), y un código de recuperación correcto se elimina de inmediato.
     """
     codigo = _normalizar(codigo)
     if not codigo:
         return False
     if re.fullmatch(r'\d{6}', codigo):
-        return pyotp.TOTP(segundo_factor.secreto).verify(codigo, valid_window=1)
+        paso = paso_del_codigo(segundo_factor.secreto, codigo)
+        return paso is not None and usar_paso_totp(segundo_factor, paso)
     if not permitir_recuperacion:
         return False
     buscado = hash_codigo(codigo)

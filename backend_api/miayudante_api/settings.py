@@ -61,6 +61,8 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
+    # Lista negra de tokens de refresco: cerrar sesión los invalida
+    'rest_framework_simplejwt.token_blacklist',
     'drf_spectacular',
     'storages',
     'scraper',
@@ -101,7 +103,8 @@ WSGI_APPLICATION = 'miayudante_api.wsgi.application'
 # API: autenticación con JWT (RF-12) y límite de intentos en login y registro
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        # JWT de simplejwt que además rechaza los tokens de una sesión cerrada
+        'usuarios.autenticacion.JWTConRevocacion',
     ],
     'DEFAULT_THROTTLE_RATES': {
         'auth': '20/min',

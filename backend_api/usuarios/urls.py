@@ -1,13 +1,17 @@
 from django.urls import path
+from rest_framework_simplejwt.views import TokenRefreshView
 
 from .views import (
     ActivarDobleFactorView, ConfirmarDobleFactorView, ConsentimientoView, CuentaView, DesactivarDobleFactorView,
-    LoginView, MisDatosView, PerfilView, RegistroView, ResultadoTestView, VerificarDobleFactorView,
+    LoginView, LogoutView, MisDatosView, PerfilView, RegistroView, ResultadoTestView, VerificarDobleFactorView,
 )
 
 urlpatterns = [
     path('api/v1/auth/registro/', RegistroView.as_view(), name='auth_registro'),
     path('api/v1/auth/login/', LoginView.as_view(), name='auth_login'),
+    path('api/v1/auth/logout/', LogoutView.as_view(), name='auth_logout'),
+    # Renueva el token de acceso con el de refresco (un token revocado al cerrar sesión ya no sirve)
+    path('api/v1/auth/refresh/', TokenRefreshView.as_view(), name='auth_refresh'),
     path('api/v1/auth/perfil/', PerfilView.as_view(), name='auth_perfil'),
     # Doble factor con app autenticadora (TOTP)
     path('api/v1/auth/2fa/verificar/', VerificarDobleFactorView.as_view(), name='auth_2fa_verificar'),

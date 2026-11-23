@@ -53,6 +53,8 @@ jobs:
       - run: python manage.py migrate --noinput
       - run: python manage.py createcachetable
       - run: python manage.py test
+      # Swagger (/api/v1/docs/) sin advertencias: toda vista nueva debe documentar su entrada y su salida
+      - run: python manage.py spectacular --validate --fail-on-warn --file /tmp/esquema.yml
       - run: python manage.py collectstatic --noinput --dry-run
 
   frontend:

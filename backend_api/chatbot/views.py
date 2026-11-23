@@ -1,6 +1,7 @@
 import logging
 
-from rest_framework import status
+from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
+from rest_framework import serializers, status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
@@ -34,6 +35,22 @@ class ChatbotAPIView(APIView):
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = 'chatbot'
 
+    @extend_schema(
+        tags=['Asistente'], summary='Preguntar al asistente (RAG con tool calling)', operation_id='chatbot_preguntar',
+        description='Uso interno del BFF: Nginx no publica /api/chatbot/. No exige sesión y no guarda la conversación.',
+        request=inline_serializer('PreguntaAsistente', {
+            'mensaje': serializers.CharField(max_length=MAX_LARGO_MENSAJE),
+            'historial': serializers.ListField(
+                child=inline_serializer('TurnoAsistente', {
+                    'role': serializers.ChoiceField(choices=['user', 'assistant']),
+                    'content': serializers.CharField(max_length=MAX_LARGO_TURNO),
+                }), required=False, help_text=f'Últimos {MAX_TURNOS_HISTORIAL} turnos, guardados en el navegador'),
+        }),
+        responses={200: inline_serializer('RespuestaAsistente', {'respuesta': serializers.CharField()}),
+                   400: inline_serializer('ErrorAsistente', {'error': serializers.CharField()}),
+                   429: OpenApiResponse(description='Más de 10 mensajes por minuto desde la misma IP'),
+                   500: OpenApiResponse(description='Falla del asistente (por ejemplo, OpenAI no responde)')},
+    )
     def post(self, request):
         mensaje_usuario = request.data.get("mensaje")
 
