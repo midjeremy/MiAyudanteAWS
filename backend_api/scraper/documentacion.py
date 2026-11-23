@@ -52,6 +52,8 @@ CAMPOS_CARRERA = {
     'duracion_meses': RangoMesesSerializer,
     'malla_url': serializers.CharField(allow_null=True, help_text='Malla digital en el sitio de la institución'),
     'malla_pdf_url': serializers.CharField(allow_null=True, help_text='Ruta de esta API para descargar la malla en PDF'),
+    'mallas_digitales': serializers.ListField(child=serializers.DictField(), help_text='[{etiqueta, url}]: "Malla diurna", "Malla vespertina"...'),
+    'url_carrera': serializers.CharField(allow_null=True, help_text='Página de la carrera en el sitio de la institución'),
     'area_estudio': serializers.CharField(help_text='Clave común con el test Ikigai; vacía si no se pudo determinar'),
     'area_estudio_nombre': serializers.CharField(),
     'area_institucion': serializers.CharField(help_text='Área (INACAP) o escuela (Duoc UC) tal como se publica'),

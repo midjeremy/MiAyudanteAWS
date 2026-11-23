@@ -17,9 +17,23 @@ from scraper.models import Carrera, Mencion
 VIGENCIA_ENLACE = 300  # segundos
 
 
+def pdf_de_la_institucion(carrera):
+    """PDF publicado por la institución (INACAP); antes de la migración 0012 quedaba en url_malla."""
+    return carrera.url_malla_pdf or (carrera.url_malla if es_pdf(carrera.url_malla) else None)
+
+
+def mallas_digitales(carrera):
+    """Botones 'Ver malla …': [{'etiqueta', 'url'}]. INACAP puede tener diurna y vespertina; Duoc UC, una."""
+    if carrera.mallas_digitales:
+        return carrera.mallas_digitales
+    if carrera.url_malla and not es_pdf(carrera.url_malla):
+        return [{'etiqueta': 'Malla digital', 'url': carrera.url_malla}]
+    return []
+
+
 def ruta_malla_pdf(carrera):
     """Ruta de descarga de la malla de la carrera, o None si no hay PDF."""
-    if carrera.s3_url_malla_pdf or es_pdf(carrera.url_malla):
+    if carrera.s3_url_malla_pdf or pdf_de_la_institucion(carrera):
         return reverse('api_carrera_malla_pdf', args=[carrera.id])
     return None
 
@@ -69,7 +83,7 @@ class MallaPdfView(APIView):
     def get(self, request, pk):
         carrera = get_object_or_404(Carrera.objects.select_related('institucion'), pk=pk)
         institucion = carrera.institucion.nombre if carrera.institucion else ''
-        return self.destino(carrera.s3_url_malla_pdf, carrera.url_malla,
+        return self.destino(carrera.s3_url_malla_pdf, pdf_de_la_institucion(carrera),
                             nombre_archivo(carrera.nombre_carrera, institucion))
 
 

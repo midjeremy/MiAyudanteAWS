@@ -23,6 +23,7 @@ from scraper.etl import (
     TASA_MINIMA_EXITO, avisar_lote, cerrar_lote, cerrar_lotes_colgados, crear_cliente_s3, describir_error,
     motivo_para_omitir, retirar_ofertas_obsoletas, subir_json_crudo, tasa_exito,
 )
+from scraper.mallas_inacap import extraer_mallas_inacap, normalizar_pdf
 from scraper.models import Institucion, Carrera, LoteScrapingS3, Sede, Jornada, OfertaAcademica
 
 URL_ARANCELES_SIGA3 = "https://siga3.inacap.cl/fup1.5/ofertas/contenidoCarrerasPorArea.asp"
@@ -220,6 +221,9 @@ class Command(BaseCommand):
                         self.stdout.write(self.style.WARNING(f"  [!] Sin enlace PDF visible para {nombre_carrera}"))
                         errores.append(f"Sin malla: {nombre_carrera}")
 
+                    mallas = extraer_mallas_inacap(driver.page_source)
+                    pdf_publicado = mallas['pdf'] or normalizar_pdf(url_pdf)
+
                     # --- C. Guardar Carrera en PostgreSQL ---
                     # El área viene en la URL: /carreras/area-<area>/<carrera>
                     area_publicada, area_institucional = area_inacap(enlace)
@@ -231,7 +235,11 @@ class Command(BaseCommand):
                             'titulo_otorgado': titulo_otorgado[:255] if titulo_otorgado else None,
                             'duracion_semestres': duracion_semestres,
                             's3_url_malla_pdf': ruta_s3,
-                            'url_malla': url_pdf.split('?')[0] if url_pdf else None,
+                            # Malla digital (siga.inacap.cl): diurna y vespertina si se publican por separado
+                            'url_malla': mallas['digitales'][0]['url'] if mallas['digitales'] else pdf_publicado,
+                            'mallas_digitales': mallas['digitales'],
+                            'url_malla_pdf': pdf_publicado,
+                            'url_carrera': enlace,
                             'area_institucion': area_publicada,
                             'area_estudio': clasificar_area(nombre_carrera, area_institucional),
                         }
