@@ -42,6 +42,8 @@ class SegundoFactor(models.Model):
     codigos_recuperacion = models.JSONField(
         default=list, blank=True, help_text='Hashes de los códigos de recuperación aún no usados.'
     )
+    # Último paso de 30 s cuyo código TOTP se aceptó: un código ya usado no sirve de nuevo dentro de su ventana
+    ultimo_paso_totp = models.BigIntegerField(null=True, blank=True)
     creado_en = models.DateTimeField(auto_now_add=True)
 
     class Meta:

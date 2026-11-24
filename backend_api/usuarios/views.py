@@ -10,11 +10,13 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
-from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 
 from Test_Ikigai.models import Resultado
 
-from . import doble_factor
+from . import doble_factor, documentacion as doc
+from .autenticacion import revocar_acceso
 from .models import Consentimiento, SegundoFactor
 from .privacidad import EDAD_MINIMA_CUENTA, VERSION_POLITICA
 
@@ -54,6 +56,7 @@ class AuthThrottledView(APIView):
 
 
 class RegistroView(AuthThrottledView):
+    @doc.REGISTRO
     def post(self, request):
         correo = (request.data.get('correo') or '').strip().lower()
         nombre = (request.data.get('nombre') or '').strip()
@@ -100,6 +103,7 @@ class RegistroView(AuthThrottledView):
 
 
 class LoginView(AuthThrottledView):
+    @doc.LOGIN
     def post(self, request):
         correo = (request.data.get('correo') or '').strip().lower()
         password = request.data.get('password') or ''
@@ -132,6 +136,46 @@ def respuesta_sesion(usuario):
     })
 
 
+class LogoutView(APIView):
+    """Cierra la sesión: el token de refresco pasa a la lista negra y el de acceso deja de servir de inmediato.
+
+    No usa la autenticación normal: con un token de acceso vencido o ya revocado, DRF respondería 401 y el token de
+    refresco quedaría vigente. Ambos tokens se leen y se validan aquí.
+    """
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    @doc.LOGOUT
+    def post(self, request):
+        acceso = None
+        encabezado = request.META.get('HTTP_AUTHORIZATION', '')
+        if encabezado.startswith('Bearer '):
+            try:
+                acceso = AccessToken(encabezado[len('Bearer '):].strip())
+            except TokenError:
+                acceso = None  # vencido o inválido: no hay nada que revocar
+        refresco = request.data.get('refresh') if isinstance(request.data, dict) else None
+        token_refresco = None
+        if isinstance(refresco, str) and refresco:
+            try:
+                token_refresco = RefreshToken(refresco)
+            except TokenError:
+                token_refresco = None  # vencido, inválido o ya revocado
+        # Los dos tokens deben ser de la misma cuenta: no se revoca la sesión de otra persona
+        if acceso is not None and token_refresco is not None and \
+                str(acceso.get('user_id')) != str(token_refresco.get('user_id')):
+            return Response({'error': 'Los tokens no corresponden a la misma sesión.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if acceso is not None:
+            revocar_acceso(acceso)
+        if token_refresco is not None:
+            try:
+                token_refresco.blacklist()
+            except TokenError:
+                pass
+        return Response({'sesion_cerrada': True})
+
+
 class DobleFactorThrottledView(APIView):
     """Los códigos de 6 dígitos se adivinan probando: se limitan a 5 intentos por minuto."""
     throttle_classes = [ScopedRateThrottle]
@@ -144,6 +188,7 @@ class VerificarDobleFactorView(DobleFactorThrottledView):
     # Sin JWT todavía: no se intenta autenticar (un token vencido en la cabecera no debe dar 401)
     authentication_classes = []
 
+    @doc.VERIFICAR_2FA
     def post(self, request):
         datos = request.data if isinstance(request.data, dict) else {}
         codigo = datos.get('codigo')
@@ -173,6 +218,7 @@ class ActivarDobleFactorView(APIView):
     """Paso 1 de la activación: genera el secreto y lo entrega como URI otpauth:// y como QR."""
     permission_classes = [IsAuthenticated]
 
+    @doc.ACTIVAR_2FA
     def post(self, request):
         existente = SegundoFactor.objects.filter(usuario=request.user).first()
         if existente is not None and existente.activo:
@@ -181,7 +227,8 @@ class ActivarDobleFactorView(APIView):
         # Cada intento de activación genera un secreto nuevo: un QR mostrado antes deja de servir
         secreto = doble_factor.nuevo_secreto()
         SegundoFactor.objects.update_or_create(
-            usuario=request.user, defaults={'secreto': secreto, 'activo': False, 'codigos_recuperacion': []}
+            usuario=request.user,
+            defaults={'secreto': secreto, 'activo': False, 'codigos_recuperacion': [], 'ultimo_paso_totp': None}
         )
         uri = doble_factor.uri_aprovisionamiento(secreto, request.user)
         return Response({
@@ -196,6 +243,7 @@ class ConfirmarDobleFactorView(DobleFactorThrottledView):
     """Paso 2 de la activación: el primer código prueba que la app quedó bien configurada."""
     permission_classes = [IsAuthenticated]
 
+    @doc.CONFIRMAR_2FA
     def post(self, request):
         segundo_factor = SegundoFactor.objects.filter(usuario=request.user).first()
         if segundo_factor is None:
@@ -217,6 +265,7 @@ class DesactivarDobleFactorView(DobleFactorThrottledView):
     """Desactiva el doble factor. Pide un código válido (de la app o de recuperación)."""
     permission_classes = [IsAuthenticated]
 
+    @doc.DESACTIVAR_2FA
     def post(self, request):
         with transaction.atomic():
             segundo_factor = SegundoFactor.objects.select_for_update().filter(
@@ -233,11 +282,13 @@ class DesactivarDobleFactorView(DobleFactorThrottledView):
 class PerfilView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @doc.PERFIL_GET
     def get(self, request):
         return Response({'usuario': datos_usuario(request.user),
                          'consentimiento_vigente': consentimiento_vigente(request.user),
                          'doble_factor_activo': doble_factor_activo(request.user)})
 
+    @doc.PERFIL_PATCH
     def patch(self, request):
         """Derecho de rectificación: el titular corrige su nombre y apellidos."""
         usuario = request.user
@@ -262,6 +313,7 @@ class ConsentimientoView(APIView):
     """Para cuentas que aún no aceptaron la versión vigente de la política (p. ej. creadas antes de ella)."""
     permission_classes = [IsAuthenticated]
 
+    @doc.CONSENTIMIENTO
     def post(self, request):
         if not aceptado(request.data.get('acepta_privacidad')) or not aceptado(request.data.get('mayor_14')):
             return Response({'error': 'Debes aceptar la política de privacidad y declarar tener '
@@ -277,6 +329,7 @@ class MisDatosView(APIView):
     """Derechos de acceso y portabilidad: entrega todos los datos del titular en un formato reutilizable (JSON)."""
     permission_classes = [IsAuthenticated]
 
+    @doc.MIS_DATOS
     def get(self, request):
         usuario = request.user
         datos = {
@@ -323,6 +376,7 @@ class CuentaView(APIView):
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = 'auth'
 
+    @doc.CUENTA
     def delete(self, request):
         if not request.user.check_password(request.data.get('password') or ''):
             return Response({'error': 'La contraseña no es correcta.'}, status=status.HTTP_403_FORBIDDEN)
@@ -335,6 +389,7 @@ class ResultadoTestView(APIView):
     """Supresión parcial: el titular borra uno de sus resultados del test (su perfil vocacional)."""
     permission_classes = [IsAuthenticated]
 
+    @doc.BORRAR_RESULTADO
     def delete(self, request, pk):
         borrados, _ = Resultado.objects.filter(pk=pk, usuario=request.user).delete()
         if not borrados:

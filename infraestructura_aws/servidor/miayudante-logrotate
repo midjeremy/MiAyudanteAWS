@@ -1,9 +1,10 @@
-# Rotación de los logs de cron (scrapers, monitor y purga). El deploy lo copia a /etc/logrotate.d/miayudante.
+# Rotación de los logs de cron (scrapers, monitor, purga y limpieza de tokens). El deploy lo copia a /etc/logrotate.d/miayudante.
 # Semanal, se guardan 8 semanas comprimidas. copytruncate: cron sigue escribiendo en el mismo archivo.
 /home/ubuntu/scraper_inacap.log
 /home/ubuntu/scraper_duoc.log
 /home/ubuntu/monitor_salud.log
 /home/ubuntu/purga_cuentas.log
+/home/ubuntu/limpieza_tokens.log
 {
     weekly
     rotate 8
