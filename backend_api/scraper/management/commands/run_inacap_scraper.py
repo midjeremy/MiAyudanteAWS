@@ -20,7 +20,7 @@ from selenium.common.exceptions import (
 # Importar modelos de la aplicación 'scraper'
 from scraper.catalogos import area_inacap, clasificar_area, clasificar_nivel, normalizar_jornada, normalizar_texto, region_de_sede
 from scraper.etl import (
-    TASA_MINIMA_EXITO, avisar_lote, cerrar_lote, cerrar_lotes_colgados, crear_cliente_s3, describir_error,
+    TASA_MINIMA_EXITO, avisar_lote, cerrar_lote, monto_publicado, revisar_aranceles, cerrar_lotes_colgados, crear_cliente_s3, describir_error,
     motivo_para_omitir, retirar_ofertas_obsoletas, subir_json_crudo, tasa_exito,
 )
 from scraper.mallas_inacap import extraer_mallas_inacap, normalizar_pdf
@@ -98,11 +98,8 @@ class Command(BaseCommand):
             driver.switch_to.default_content()
 
     def limpiar_dinero(self, valor_str):
-        try:
-            solo_numeros = re.sub(r'[^\d]', '', valor_str)
-            return int(solo_numeros) if solo_numeros else 0
-        except:
-            return 0
+        """Monto publicado o None: una celda vacía (la institución no publicó el valor) no es un arancel de $0."""
+        return monto_publicado(valor_str)
 
     def extraer_semestres(self, texto_duracion):
         try:
@@ -282,12 +279,14 @@ class Command(BaseCommand):
                                                 nombre_sede_bruto = columnas[0].text.strip() or "Sede No Especificada"
                                                 horario_bruto = columnas[2].text.strip()
                                             
-                                                texto_matricula = columnas[3].text.strip() if columnas[3].text.strip() else "0"
-                                                texto_semestral = columnas[4].text.strip() if columnas[4].text.strip() else "0"
-                                            
+                                                texto_matricula = columnas[3].text.strip()
+                                                texto_semestral = columnas[4].text.strip()
+
+                                                # Celda vacía = no publicado: queda NULL y el catálogo muestra
+                                                # «Sin información (arancel no publicado)» (antes se guardaba $0)
                                                 matricula_clp = self.limpiar_dinero(texto_matricula)
                                                 semestral_clp = self.limpiar_dinero(texto_semestral)
-                                                arancel_anual_clp = semestral_clp * 2
+                                                arancel_anual_clp = semestral_clp * 2 if semestral_clp else None
                                             
                                                 sede_obj, _ = Sede.objects.get_or_create(
                                                     nombre_sede=nombre_sede_bruto,
@@ -503,6 +502,9 @@ class Command(BaseCommand):
             estado = 'COMPLETADO' if tasa >= TASA_MINIMA_EXITO and not errores else 'PARCIAL'
             cerrar_lote(lote, estado, carreras_ok, total_carreras, len(ids_vigentes), errores)
             avisar_lote(lote)  # solo envía correo si quedó PARCIAL
+            sin_arancel = revisar_aranceles(lote)
+            if sin_arancel:
+                self.stdout.write(self.style.WARNING(f'[!] {len(sin_arancel)} ofertas sin arancel publicado (ver el lote).'))
             self.stdout.write(self.style.SUCCESS(
                 f'\n✅ Lote {lote.id} ({estado}): {carreras_ok}/{total_carreras} carreras, '
                 f'{len(ids_vigentes)} ofertas, {retiradas} retiradas, {len(errores)} errores. KPI-01: {tasa}%.'
