@@ -9,7 +9,8 @@ from scraper.catalogos import normalizar_texto
 
 def limpiar_dinero(texto):
     solo_numeros = re.sub(r'[^\d]', '', texto or '')
-    return int(solo_numeros) if solo_numeros else None
+    # Un monto en 0 tampoco es un precio publicado
+    return int(solo_numeros) if solo_numeros and int(solo_numeros) > 0 else None
 
 
 def extraer_jornadas(texto):

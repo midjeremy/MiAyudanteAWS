@@ -1,5 +1,6 @@
 """Reglas comunes de control del pipeline: KPI-01, lotes y retiro de ofertas obsoletas."""
 import json
+import re
 import logging
 from datetime import timedelta
 
@@ -54,6 +55,55 @@ def cerrar_lote(lote, estado, correctos, total, total_ofertas=0, errores=None):
     lote.tasa_exito = tasa_exito(correctos, total)
     lote.detalle_errores = '\n'.join(errores)[:5000]
     lote.save()
+
+
+# Si más de esta fracción de las ofertas del lote llega sin arancel, lo más probable es que la página de la
+# institución esté fallando (no que haya dejado de publicar los precios): se avisa por correo.
+UMBRAL_SIN_ARANCEL = 0.05
+
+
+def monto_publicado(valor):
+    """Monto en pesos o None. Un precio vacío o en 0 significa «no publicado»: nunca es un arancel real."""
+    if valor is None:
+        return None
+    numero = int(valor) if isinstance(valor, (int, float)) else int(re.sub(r'[^\d]', '', str(valor)) or 0)
+    return numero if numero > 0 else None
+
+
+def revisar_aranceles(lote):
+    """Registra en el lote las ofertas que quedaron sin arancel y avisa si son demasiadas.
+
+    El catálogo las muestra como «Sin información (arancel no publicado)» y el asistente responde que el dato no
+    está; no se usan valores antiguos. Devuelve la lista de ofertas sin arancel («carrera – sede – jornada»).
+    """
+    ofertas = OfertaAcademica.objects.filter(lote_scraping=lote)
+    total = ofertas.count()
+    faltantes = [
+        f'{o.carrera.nombre_carrera} – {o.sede.nombre_sede} – {o.jornada.tipo_jornada}'
+        for o in ofertas.filter(arancel_anual_clp__isnull=True, arancel_semestral_clp__isnull=True,
+                                arancel_mensual_clp__isnull=True).select_related('carrera', 'sede', 'jornada')
+                        .order_by('carrera__nombre_carrera', 'sede__nombre_sede')
+    ]
+    if not faltantes:
+        return faltantes
+    resumen = f'Aviso: {len(faltantes)} de {total} ofertas sin arancel publicado por la institución'
+    lote.detalle_errores = '\n'.join(filter(None, [lote.detalle_errores, resumen + ':', *faltantes]))[:5000]
+    lote.save(update_fields=['detalle_errores'])
+    if total and len(faltantes) / total > UMBRAL_SIN_ARANCEL:
+        try:
+            mail_admins(
+                f'ETL {lote.institucion.nombre}: {len(faltantes)} ofertas sin arancel en el lote {lote.id}',
+                '\n'.join([
+                    f'{resumen} ({len(faltantes) / total:.0%}, umbral {UMBRAL_SIN_ARANCEL:.0%}).',
+                    'Probablemente la página de aranceles de la institución está fallando. El catálogo muestra',
+                    '«Sin información (arancel no publicado)» en esas ofertas hasta la próxima carga.',
+                    'Qué hacer: revisar la página de la carrera; si ya publica los valores, volver a ejecutar el scraper.',
+                    '', *faltantes[:100],
+                ]),
+            )
+        except Exception:
+            logger.exception('No se pudo enviar el aviso de ofertas sin arancel del lote %s', lote.id)
+    return faltantes
 
 
 def describir_error(error, largo=200):

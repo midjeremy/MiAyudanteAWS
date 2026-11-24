@@ -7,7 +7,7 @@ from scraper.duoc.carga import CUOTAS_POR_SEMESTRE, MINIMO_CARRERAS, cargar_item
 from scraper.duoc.spider import DuocSpider
 from scraper.etl import (
     TASA_MINIMA_EXITO, avisar_lote, cerrar_lote, cerrar_lotes_colgados, crear_cliente_s3, describir_error,
-    motivo_para_omitir, retirar_ofertas_obsoletas, subir_json_crudo, tasa_exito,
+    motivo_para_omitir, retirar_ofertas_obsoletas, revisar_aranceles, subir_json_crudo, tasa_exito,
 )
 from scraper.mallas_pdf import generar_mallas_pdf, ruta_chrome
 from scraper.models import LoteScrapingS3
@@ -112,6 +112,9 @@ class Command(BaseCommand):
 
         retiradas = retirar_ofertas_obsoletas(institucion, ids_vigentes) if rastreo_completo else 0
         cerrar_lote(lote, 'COMPLETADO', len(validas), total, len(ids_vigentes), errores)
+        sin_arancel = revisar_aranceles(lote)
+        if sin_arancel:
+            self.stdout.write(self.style.WARNING(f'[!] {len(sin_arancel)} ofertas sin arancel publicado (ver el lote).'))
         self.stdout.write(self.style.SUCCESS(
             f'✅ Lote {lote.id}: {len(validas)} carreras, {len(ids_vigentes)} ofertas, {retiradas} retiradas. KPI-01: {tasa}%.'
         ))
